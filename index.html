@@ -1,0 +1,3329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V-checker v162</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        
+        .tool-selected {
+            background-color: #3b82f6; color: white;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #3b82f6;
+        }
+        .drawing-canvas { touch-action: none; } /* Add this for pointer events */
+
+        .aspect-ratio-16-9 {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%; /* 9 / 16 = 0.5625 */
+        }
+        .aspect-ratio-16-9 iframe,
+        .aspect-ratio-16-9 div,
+        .aspect-ratio-16-9 video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #toast {
+            transition: opacity 0.5s, transform 0.5s;
+        }
+        #loader {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .drag-over {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        #paste-target {
+            min-height: 200px;
+        }
+        #dictionary-toggle-icon {
+            transition: transform 0.3s;
+        }
+        #text-input-box {
+            position: absolute;
+            z-index: 10;
+            border: 1px dashed #9ca3af;
+            background-color: rgba(255, 255, 255, 0.8);
+            outline: none;
+            resize: none;
+            overflow: hidden;
+            line-height: 1.2;
+            padding: 2px;
+            font-family: sans-serif;
+        }
+        .tool-btn, .history-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: 2px solid #d1d5db;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .history-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* ▼▼▼ Fullscreen Styles (改修) ▼▼▼ */
+        #player-wrapper:fullscreen {
+            background-color: black;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #player-wrapper:fullscreen .aspect-ratio-16-9 {
+            flex-grow: 1; /* 映像エリアは利用可能なスペースを埋める */
+            width: 100%;
+            height: 0; /* flex-growが効くように高さを0にする */
+            padding-top: 0;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* 全画面時のカスタムコントロールのコンテナ */
+        #player-wrapper:fullscreen #fullscreen-controls {
+            position: relative; /* Tailwindのabsoluteを上書き */
+            flex-shrink: 0; /* コントロールが縮まないようにする */
+            pointer-events: none; /* コンテナはクリックを透過 */
+        }
+        
+        /* 全画面時のカスタムコントロール内のボタン群 */
+        #player-wrapper:fullscreen #fullscreen-controls > div {
+             pointer-events: auto; /* ボタンはクリックを許可 */
+        }
+
+        #player-wrapper:fullscreen .mt-3.text-center {
+            display: none;
+        }
+        /* ▲▲▲ Fullscreen Styles (改修) ▲▼▼ */
+        
+        /* ▼▼▼ Help Button & Modal Styles ▼▼▼ */
+        .help-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 9999px;
+            background-color: #e5e7eb;
+            color: #4b5563;
+            font-weight: bold;
+            border: 1px solid #d1d5db;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .help-btn:hover {
+            background-color: #d1d5db;
+            transform: scale(1.1);
+        }
+        #help-modal-content-text {
+            white-space: pre-wrap;
+            line-height: 1.8;
+        }
+        #help-modal-content-text strong {
+            color: #1d4ed8;
+            font-weight: bold;
+        }
+        /* ▲▲▲ Help Button & Modal Styles ▲▲▲ */
+
+        /* ▼▼▼ Tooltip Styles (新規追加) ▼▼▼ */
+        .tooltip {
+            position: absolute;
+            display: none; /* 初期状態は非表示 */
+            background-color: #1f2937; /* bg-gray-800 */
+            color: white;
+            text-align: center;
+            border-radius: 0.375rem; /* rounded-md */
+            padding: 0.5rem 0.75rem; /* py-2 px-3 */
+            z-index: 50;
+            font-size: 0.75rem; /* text-xs */
+            line-height: 1rem;
+            width: max-content; /* 内容に応じた幅 */
+            max-width: 16rem; /* max-w-xs */
+            white-space: normal; /* テキストの折り返しを許可 */
+            pointer-events: none; /* ツールチップ自体はクリックできないようにする */
+            bottom: 125%; /* アイコンの上に表示 */
+            left: 50%;
+            transform: translateX(-50%);
+            transition: opacity 0.2s;
+        }
+        .tooltip.show {
+            display: block;
+        }
+        /* ▲▲▲ Tooltip Styles (新規追加) ▲▲▲ */
+        
+        /* ▼▼▼ Load Session Modal Styles (新規追加) ▼▼▼ */
+        .session-item:hover {
+            background-color: #f3f4f6; /* bg-gray-100 */
+        }
+        /* ▲▲▲ Load Session Modal Styles (新規追加) ▲▲▲ */
+/* ▼▼▼ 編集中のハイライト用スタイル ▼▼▼ */
+        .feedback-item {
+            transition: background-color 0.2s, box-shadow 0.2s;
+        }
+        .feedback-item.editing {
+            background-color: #dbeafe; /* 水色の背景 */
+            box-shadow: 0 0 0 2px #3b82f6 inset; /* 青い枠線 */
+        }
+        /* ▲▲▲ 編集中のハイライト用スタイル ▲▲▲ */
+
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="bg-yellow-100 border-b-2 border-yellow-200 text-center p-2 text-sm text-yellow-800">
+        ※このアプリはGoogle Chromeでの利用を推奨します。
+    </div>
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">V-checker</h1>
+            <p class="text-xs text-gray-500 mt-2">
+                最終更新日: 2025/11/11 (v162) 
+                
+            </p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 space-y-8">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <span>1. 動画ソースを選択</span>
+                        <button class="help-btn" data-help-id="video-source" aria-label="動画ソース選択のヘルプ">？</button>
+                    </h2>
+                    <div class="space-y-6">
+                        <div>
+                             <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <span class="align-middle">ローカル動画ファイル</span>
+                                <span class="ml-2 bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full align-middle">推奨</span>
+                             </label>
+                            <label id="drop-zone" for="file-input" class="block border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all">
+                                <p class="text-gray-500">ここに動画ファイルをドラッグ＆ドロップ、またはクリックして選択</p>
+                                <p class="text-sm text-gray-400 mt-1">(動画NASの動画ファイルも再生できます。 ※MXFファイルは再生できません)</p>
+                                <input type="file" id="file-input" class="hidden" accept="video/*">
+                            </label>
+                        </div>
+                        <div>
+                            <label for="url-input" class="flex items-center text-sm font-medium text-gray-700 mb-1">
+                                <span>YouTube / Google Drive URL</span>
+                                <div class="relative ml-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 cursor-pointer" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" data-tooltip-trigger="nas-info-tooltip">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <div id="nas-info-tooltip" class="tooltip">
+                                        社内NASの動画は「ローカル動画ファイル」の枠から選択してください。
+                                    </div>
+                                </div>
+                            </label>
+                            <input type="text" id="url-input" placeholder="YouTubeまたはGoogleドライブの共有URLをペースト" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                            <p id="url-error" class="text-red-600 text-sm mt-1 hidden">
+                                有効なYouTubeまたはGoogle DriveのURL形式ではありません。
+                            </p>
+                            <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                                <p>
+                                    <span class="font-bold">Googleドライブ:</span> HTBアカウントのファイルはアクセス制限がかかっているため再生できません。一度動画ファイルをPCにダウンロードしてから、上のローカルファイル枠内にドラッグ＆ドロップしてご利用ください。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="review-section" class="space-y-8 hidden">
+                    <div id="player-wrapper" class="relative bg-white p-4 rounded-xl shadow-md z-10">
+                        <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                            <span>動画プレイヤー</span>
+                            <button class="help-btn" data-help-id="player" aria-label="動画プレイヤーのヘルプ">？</button>
+                        </h2>
+                        <div class="aspect-ratio-16-9 bg-black rounded-lg overflow-hidden flex items-center justify-center text-gray-400">
+                            <div id="youtube-player"></div>
+                            <video id="generic-player" class="hidden" controls crossorigin="anonymous" controlslist="nodownload"></video>
+                            <p id="player-placeholder">ここに動画プレイヤーが表示されます</p>
+                        </div>
+                        
+                        <div id="fullscreen-controls" class="hidden absolute bottom-0 left-0 right-0 p-4 z-50">
+                            <div class="flex justify-center items-center gap-4">
+                                <button id="fs-rewind-5s-btn" class="bg-gray-200 text-gray-700 font-bold px-3 py-1.5 rounded-lg hover:bg-gray-300 transition shadow-sm flex items-center gap-1 text-sm" title="5秒巻き戻し (J)">
+                                    <span>« 5s</span>
+                                </button>
+                                <button id="fs-ff-5s-btn" class="bg-gray-200 text-gray-700 font-bold px-3 py-1.5 rounded-lg hover:bg-gray-300 transition shadow-sm flex items-center gap-1 text-sm" title="5秒早送り (L)">
+                                    <span>5s »</span>
+                                </button>
+                                <button id="fs-add-marker-btn" class="bg-yellow-500 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-yellow-600 transition shadow-sm flex items-center gap-2 text-sm">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
+                                    <span>マーカー追加</span>
+                                </button>
+                                <button id="fs-prev-marker-btn" class="bg-yellow-500 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-yellow-600 transition shadow-sm flex items-center gap-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                    <span>前</span>
+                                </button>
+                                <button id="fs-next-marker-btn" class="bg-yellow-500 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-yellow-600 transition shadow-sm flex items-center gap-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span>次</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                                </button>
+                                <button id="fs-exit-btn" class="bg-gray-500 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-gray-600 transition shadow-sm flex items-center text-sm ml-4">
+                                    全画面終了
+                                </button>
+                            </div>
+                        </div>
+                        <div id="resize-handle"></div>
+                        <div class="mt-3 text-center">
+                            <div class="flex justify-center items-center flex-wrap gap-x-2 gap-y-2">
+                                <div class="flex items-center gap-x-2">
+                                    <label for="preroll-input" class="text-sm font-medium text-gray-700">前ステ尺:</label>
+                                    <input type="text" id="preroll-input" placeholder="00:00:00" class="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm font-mono focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                                </div>
+                                <button id="rewind-5s-btn" class="bg-gray-200 text-gray-700 font-bold px-2.5 py-1.5 rounded-lg hover:bg-gray-300 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-1 text-sm" disabled title="5秒巻き戻し (J)">
+                                    <span>« 5s</span>
+                                </button>
+                                <button id="ff-5s-btn" class="bg-gray-200 text-gray-700 font-bold px-2.5 py-1.5 rounded-lg hover:bg-gray-300 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-1 text-sm" disabled title="5秒早送り (L)">
+                                    <span>5s »</span>
+                                </button>
+                                <button id="add-marker-btn" class="bg-yellow-500 text-white font-bold px-2.5 py-1.5 rounded-lg hover:bg-yellow-600 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 text-sm" disabled>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
+                                    <span>マーカー追加</span>
+                                </button>
+                                <button id="prev-marker-btn" class="bg-yellow-500 text-white font-bold px-2.5 py-1.5 rounded-lg hover:bg-yellow-600 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-1 text-sm" disabled>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                    <span>前</span>
+                                </button>
+                                <button id="next-marker-btn" class="bg-yellow-500 text-white font-bold px-2.5 py-1.5 rounded-lg hover:bg-yellow-600 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-1 text-sm" disabled>
+                                    <span>次</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                                </button>
+                                <button id="custom-fullscreen-btn" title="全画面表示の切り替え" class="bg-gray-200 text-gray-700 font-bold px-2.5 py-1.5 rounded-lg hover:bg-gray-300 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center text-sm" disabled>
+                                   <span>全画面表示</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="feedback-form-container" class="bg-white rounded-xl shadow-md">
+                        <div class="p-6">
+                            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                                <span>2. 指示を入力</span>
+                                <button class="help-btn" data-help-id="instruction-input" aria-label="指示入力のヘルプ">？</button>
+                            </h2>
+                           <div class="flex items-center flex-wrap gap-x-4 gap-y-3 mb-4">
+                            <button id="get-timecode-btn" class="bg-green-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-green-700 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2" disabled>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                <span>タイムコードを取得</span>
+                            </button>
+                            <div class="flex items-center gap-x-2">
+                                <p class="text-gray-600 font-medium">TC: <span id="timecode" class="font-mono bg-gray-200 px-2 py-1 rounded">00:00:00</span></p>
+                            </div>
+                            
+                            <div class="flex items-center gap-x-2 ml-4">
+                                <button id="template-telop-btn" class="bg-gray-200 text-gray-800 font-semibold py-1.5 px-3 text-sm rounded-lg hover:bg-gray-300 transition">テロップ：</button>
+                                <button id="template-na-btn" class="bg-gray-200 text-gray-800 font-semibold py-1.5 px-3 text-sm rounded-lg hover:bg-gray-300 transition">NA：</button>
+                                <button id="template-check-btn" class="bg-gray-200 text-gray-800 font-semibold py-1.5 px-3 text-sm rounded-lg hover:bg-gray-300 transition">確認事項：</button>
+                            </div>
+                            </div>
+                            
+                            <div class="space-y-6">
+                                <div>
+                                    <textarea id="feedback-text" rows="5" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="ここに指示を入力すると、動画が一時停止しタイムコードが自動入力されます。"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block font-semibold mb-2 flex items-center gap-2">
+                                        <span>【任意】キャプチャ画像で指示</span>
+                                        <button class="help-btn" data-help-id="capture-draw" aria-label="キャプチャと描画のヘルプ">？</button>
+                                    </label>
+                                    <div id="capture-method-container">
+                                        <button id="video-capture-btn" class="hidden w-full bg-indigo-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center justify-center gap-2 mb-2">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                            <span>現在の再生位置をキャプチャ</span>
+                                        </button>
+                                        <p id="manual-capture-info" class="hidden text-sm text-gray-600 mb-2">
+                                            Windows: <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Win</kbd> + <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Shift</kbd> + <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">S</kbd> キーで画面を撮影
+                                            <a href="#" id="manual-link" class="text-blue-600 hover:underline ml-2">(詳しい操作方法はこちら)</a>
+                                        </p>
+                                    </div>
+                                    <div id="paste-target" tabindex="0" class="relative w-full bg-gray-200 border-2 border-dashed border-gray-400 rounded-lg flex items-center justify-center text-center text-gray-500 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        <p id="paste-placeholder">撮影した画像をここに貼り付け(Ctrl+V)<br>貼り付け後、直接ペンや文字で書き込めます</p>
+                                        <img id="pasted-image" class="absolute top-0 left-0 w-full h-full object-contain hidden" />
+                                        <canvas id="drawing-canvas" class="drawing-canvas absolute top-0 left-0 w-full h-full"></canvas>
+                                    </div>
+                                    <div id="drawing-tools" class="mt-2 hidden">
+                                        <div class="flex items-center justify-between gap-2 flex-wrap w-full">
+                                            <div class="flex items-center gap-2 flex-wrap">
+                                                <button class="tool-btn" data-tool="select" title="選択">選択</button>
+                                                <button class="tool-btn" data-tool="pen" title="ペン">ペン</button>
+                                                <button class="tool-btn" data-tool="text" title="文字">テキスト</button>
+                                                <button class="tool-btn" data-tool="rect" title="四角"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4h6a2 2 0 012 2v12a2 2 0 01-2 2H9a2 2 0 01-2-2V6a2 2 0 012-2z"></path></svg></button>
+                                                <button class="tool-btn" data-tool="circle" title="丸"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
+                                                <button class="tool-btn" data-tool="arrow" title="矢印"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg></button>
+                                                <button class="tool-btn" data-tool="eraser" title="消しゴム">消しゴム</button>
+                                                <input type="color" id="color-picker" value="#FF0000" class="w-8 h-8 rounded-full border-none cursor-pointer">
+                                                <label for="brush-size" class="text-sm">太さ:</label>
+                                                <input type="range" id="brush-size" min="1" max="50" value="5" class="w-24">
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <button id="undo-btn" class="history-btn" title="元に戻す (Ctrl+Z)">Undo</button>
+                                                <button id="redo-btn" class="history-btn" title="やり直す (Ctrl+Y)">Redo</button>
+                                                <button id="clear-canvas-btn" class="text-sm text-gray-600 hover:text-red-500">クリア</button>
+                                            </div>
+                                        </div>
+                                        <div class="h-5 mt-1">
+                                            <p id="tool-description" class="text-xs text-gray-500"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-8 border-t border-gray-200 pt-6">
+                                <div id="dictionary-toggle" class="cursor-pointer flex justify-between items-center">
+                                    <h2 class="text-xl font-bold flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                                        <span>辞書検索</span>
+                                        <button class="help-btn" data-help-id="dictionary-search" aria-label="辞書検索のヘルプ">？</button>
+                                    </h2>
+                                    <svg id="dictionary-toggle-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                </div>
+                                <div id="dictionary-content" class="pt-6 hidden">
+                                     <div class="flex flex-col sm:flex-row gap-2">
+                                         <input type="text" id="dictionary-search-input" placeholder="検索したい単語を入力" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                         <div class="flex gap-2 w-full sm:w-auto">
+                                             <button id="weblio-btn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-3 text-sm rounded-lg whitespace-nowrap">Weblio</button>
+                                             <button id="kotobank-btn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-3 text-sm rounded-lg whitespace-nowrap">コトバンク</button>
+                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4 text-right space-x-2">
+                                <button id="cancel-feedback-btn" class="bg-gray-200 text-gray-800 font-bold px-6 py-3 rounded-lg hover:bg-gray-300 transition">クリア</button>
+                                <button id="save-feedback-btn" class="bg-blue-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-blue-700 transition shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>指示を保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md flex flex-col space-y-6">
+                <div class="pb-4 border-b">
+                    <button id="all-clear-btn" title="すべてクリア" class="w-full flex items-center justify-center gap-1 bg-gray-500 text-white font-semibold py-2 px-3 text-sm rounded-lg hover:bg-gray-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        <span class="whitespace-nowrap">オールクリア</span>
+                    </button>
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center flex-nowrap gap-2 border-b pb-2 mb-4">
+                        <h2 class="text-xl font-bold whitespace-nowrap flex items-center gap-2">
+                            <span>マーカー一覧</span>
+                            <button class="help-btn" data-help-id="right-panel" aria-label="マーカー・指示一覧のヘルプ">？</button>
+                        </h2>
+                        <button id="clear-markers-btn" title="マーカーをクリア" class="text-xs text-gray-500 hover:text-red-500 disabled:text-gray-300 disabled:cursor-not-allowed">マーカークリア</button>
+                    </div>
+                    <div class="space-y-2" id="marker-list">
+                        <p id="no-marker-msg" class="text-gray-500">まだマーカーはありません。</p>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center flex-nowrap gap-2 border-b pb-2 mb-4">
+                        <h2 class="text-xl font-bold whitespace-nowrap">指示一覧</h2>
+                         <button id="clear-feedbacks-btn" title="指示一覧をクリア" class="text-xs text-gray-500 hover:text-red-500 disabled:text-gray-300 disabled:cursor-not-allowed">指示クリア</button>
+                    </div>
+                    <div class="space-y-4" id="feedback-list">
+                        <p id="no-feedback-msg" class="text-gray-500">まだ指示はありません。</p>
+                    </div>
+                </div>
+                
+                <div class="mt-auto pt-6 border-t space-y-2">
+                     <button id="export-pdf-btn" title="PDFで出力" class="w-full flex items-center justify-center gap-1 bg-red-600 text-white font-semibold py-2 px-3 text-sm rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        <span class="whitespace-nowrap">PDFに出力</span>
+                    </button>
+                    <button id="copy-for-email-btn" title="メール用に内容をコピー" class="w-full flex items-center justify-center gap-1 bg-green-600 text-white font-semibold py-2 px-3 text-sm rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m-8.59-1.41a1 1 0 10-1.41 1.41l3 3a1 1 0 001.41 0l7-7a1 1 0 00-1.41-1.41L11 11.59l-1.59-1.59z" /></svg>
+                        <span class="whitespace-nowrap">メール用にコピー</span>
+                    </button>
+                    
+                    <button id="download-jpeg-btn" title="キャプチャ画像のみJpegでダウンロード" class="w-full flex items-center justify-center gap-1 bg-indigo-600 text-white font-semibold py-2 px-3 text-sm rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span class="whitespace-nowrap">キャプチャ画像のみDL</span>
+                    </button>
+                    
+                    <hr class="my-4 border-gray-300">
+                    <button id="save-session-btn" title="現在の作業内容を保存する" class="w-full flex items-center justify-center gap-1 bg-blue-600 text-white font-semibold py-2 px-3 text-sm rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                        <span class="whitespace-nowrap">現在の作業を保存</span>
+                    </button>
+                    <button id="load-session-btn" title="保存した作業を読み込む" class="w-full flex items-center justify-center gap-1 bg-gray-200 text-gray-800 font-semibold py-2 px-3 text-sm rounded-lg hover:bg-gray-300 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7" /></svg>
+                        <span class="whitespace-nowrap">保存した作業を読み込む</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="text-white text-center">
+            <div id="loader" class="w-12 h-12 border-4 border-gray-200 rounded-full mx-auto"></div>
+            <p id="loading-message" class="mt-4">処理中です...</p>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-5 right-5 bg-green-600 text-white py-3 px-6 rounded-lg shadow-xl opacity-0 transform translate-y-5">
+        <p id="toast-message"></p>
+    </div>
+
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div id="help-modal-content" class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col fade-in">
+            <div class="flex justify-between items-center p-4 border-b bg-white rounded-t-xl">
+                <h3 id="help-modal-title" class="text-xl font-bold">ヘルプ</h3>
+                <button id="close-help-modal-btn" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div class="flex-grow p-6 overflow-y-auto">
+                <p id="help-modal-content-text"></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="manual-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div id="manual-modal-content" class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col fade-in">
+            <div class="flex justify-between items-center p-4 border-b bg-white rounded-t-xl">
+                <h3 class="text-xl font-bold">スクリーンショットの撮影方法 (Windows)</h3>
+                <button id="close-manual-modal-btn" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div class="flex-grow p-6 overflow-y-auto space-y-6">
+                <div>
+                    <h4 class="font-bold text-lg mb-2">Step 1: ショートカットキーを押す</h4>
+                    <p>キーボードの <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Win</kbd> + <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Shift</kbd> + <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">S</kbd> を同時に押します。</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-lg mb-2">Step 2: 撮影範囲を選択する</h4>
+                    <p>画面上部にツールバーが表示されます。一番左の**「四角形の領域切り取り」**が選択されていることを確認し、マウスをドラッグして、キャプチャしたい範囲を四角く囲みます。</p>
+                </div>
+                 <div>
+                    <h4 class="font-bold text-lg mb-2">Step 3: アプリに貼り付ける</h4>
+                    <p>キャプチャした画像は自動的にクリップボードにコピーされます。アプリの「画像をここに貼り付け」エリアをクリックしてから、<kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Ctrl</kbd> + <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">V</kbd> を押して貼り付けます。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div id="confirm-modal-content" class="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col fade-in">
+            <div class="p-6 text-center">
+                <svg class="mx-auto mb-4 w-14 h-14 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <h3 id="confirm-modal-title" class="mb-5 text-lg font-normal text-gray-600">本当に削除しますか？</h3>
+                <div class="flex justify-center gap-4">
+                    <button id="confirm-modal-cancel-btn" class="whitespace-nowrap py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-200">キャンセル</button>
+                    <button id="confirm-modal-continue-btn" class="whitespace-nowrap text-white bg-blue-600 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm inline-flex items-center px-5 py-2.5 text-center hidden">クリアせずに続行</button>
+                    <button id="confirm-modal-ok-btn" class="whitespace-nowrap text-white bg-red-600 hover:bg-red-800 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm inline-flex items-center px-5 py-2.5 text-center">クリアします</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="image-size-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-xs flex flex-col fade-in p-6 text-center">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">PDFの出力形式を選択</h3>
+            <div class="space-y-3">
+                <div>
+                    <button data-size="grid" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition">6分割</button>
+                    <p class="text-xs text-gray-500 mt-1 text-left">キャプチャ画像が多い場合に最適です。</p>
+                </div>
+                <button data-size="large" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition">大</button>
+                <button data-size="medium" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition">中</button>
+                <button data-size="small" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition">小</button>
+            </div>
+             <button id="image-size-modal-cancel-btn" class="mt-4 text-sm text-gray-600 hover:underline">キャンセル</button>
+        </div>
+    </div>
+    
+    
+    <div id="input-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col fade-in p-6">
+            <h3 id="input-modal-title" class="text-lg font-semibold text-gray-800 mb-4">作業名を入力</h3>
+            <input type="text" id="input-modal-text" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            <div class="flex justify-end gap-4 mt-4">
+                <button id="input-modal-cancel-btn" class="py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">キャンセル</button>
+                <button id="input-modal-ok-btn" class="py-2 px-4 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="load-session-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col fade-in max-h-[80vh]">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h3 class="text-xl font-bold">保存した作業を読み込む</h3>
+                <button id="load-session-modal-close-btn" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div id="load-session-list" class="flex-grow p-4 overflow-y-auto">
+                </div>
+        </div>
+    </div>
+
+    <footer class="text-center p-4 text-sm text-gray-500">
+        <div class="mb-4">
+            <a href="https://miruca.co.jp/" target="_blank" rel="noopener noreferrer">
+                <img src="https://miruca.co.jp/_img/ja/cms/580/image/_/?1756951917" alt="Miruca Co., Ltd. Logo" class="mx-auto h-10">
+            </a>
+        </div>
+        <p>不具合ございましたら、miruca映像部の上田までご連絡ください。</p>
+    </footer>
+
+    <script>
+        (function() {
+            // --- Application Constants ---
+            const CONSTANTS = {
+                APP: {
+                    CURRENT_VERSION: 160, // Version updated
+                    VERSION_CHECK_URL: 'https://gist.githubusercontent.com/yueda-spec/47e4b0ba9efbdaf676962d2f8b2574b0/raw/version.json',
+                },
+                PLAYER: {
+                    SEEK_SECONDS: 5,
+                    MARKER_JUMP_TOLERANCE: 0.5,
+                    YT_PLAYER_VARS: { 
+                        'playsinline': 1, 
+                        'rel': 0,
+                        'fs': 0
+                    },
+                },
+                IMAGE: {
+                    MAX_SIZE_BYTES: 10 * 1024 * 1024, // 10MB
+                    MAX_WIDTH: 1920,
+                    MAX_HEIGHT: 1080,
+                    JPEG_QUALITY: 0.8,
+                },
+                DRAWING: {
+                    MAX_HISTORY_SIZE: 100,
+                    DEFAULT_COLOR: '#FF0000',
+                    DEFAULT_BRUSH_SIZE: 5,
+                    RESIZE_HANDLE_SIZE: 12,
+                },
+                SOURCE_TYPE: {
+                    YOUTUBE: 'youtube',
+                    GOOGLE_DRIVE: 'googledrive',
+                    LOCAL: 'local',
+                },
+                TOOLS: {
+                    SELECT: 'select',
+                    PEN: 'pen',
+                    TEXT: 'text',
+                    RECT: 'rect',
+                    CIRCLE: 'circle',
+                    ARROW: 'arrow',
+                    ERASER: 'eraser',
+                },
+                CSS: {
+                    HIDDEN: 'hidden',
+                    TOOL_SELECTED: 'tool-selected',
+                    DRAG_OVER: 'drag-over',
+                    ROTATE_180: 'rotate-180',
+                },
+                DB: {
+                    NAME: 'videoFeedbackDB',
+                    VERSION: 2,
+                    STORE_APP_STATE: 'appState',
+                    STORE_IMAGES: 'images',
+                    STORE_SESSIONS: 'sessions',
+                    KEY_LAST_STATE: 'lastState',
+                },
+                PDF: {
+                    IMAGE_SIZE_LARGE: 'large',
+                    IMAGE_SIZE_MEDIUM: 'medium',
+                    IMAGE_SIZE_SMALL: 'small',
+                    GRID: 'grid', 
+                    ORIENTATION_PORTRAIT: 'portrait',
+                    ORIENTATION_LANDSCAPE: 'landscape',
+                },
+            };
+
+            // --- HELP MODAL DATA ---
+            const helpData = {
+                'video-source': {
+                    title: '動画読み込み欄 ヘルプ',
+                    content: '最初に再生する動画を読み込みます。\n\n<strong>ローカル動画ファイル（推奨）</strong>\nPCに保存された動画を、枠内へドラッグ＆ドロップ、またはクリックして選択します。NAS上の動画も直接再生できます。※MXF形式は非対応です。\n\n<strong>YouTube / Google Drive URL</strong>\n共有URLを貼り付けても再生できます。【注意】 Googleドライブで社内限定共有などアクセス制限があるファイルは再生できません。その場合は一度PCにダウンロードし、「ローカル動画ファイル」として読み込んでください。'
+                },
+                'player': {
+                    title: '動画プレイヤー ヘルプ',
+                    content: '読み込んだ動画を再生・一時停止・全画面表示できます。マーカーの追加や再生位置の微調整も可能です。\n\n<strong>前ステ尺</strong>\nタイムコードは再生時間しか取得できないため、カラーバーやクレジットなど本編前にある前ステの合計時間を入力します。入力した前ステ尺を差し引いた本編のTCを自動計算し取得できます。\n\n<strong>巻き戻し・早送り</strong>\n「« 5s」「5s »」ボタン、またはキーボードの J キー(巻き戻し)・ L キー(早送り)で、再生位置を5秒ずつ移動できます。\n\n<strong>マーカー機能</strong>\n修正箇所や重要シーンに目印を付けられます。「マーカー追加」ボタンまたは M キーで現在位置を記録。右側の「マーカー一覧」からクリックで該当シーンへジャンプでき、前後移動ボタンでマーカー間を移動できます。'
+                },
+                'instruction-input': {
+                    title: '指示入力 ヘルプ',
+                    content: '動画に対する指示を記録します。テキストを入力し始めると動画が自動で一時停止し、その時点のTCが記録されます。TCを先に指定したい場合は「タイムコード取得」ボタンを押します。必要に応じて画像を貼り付け、視覚的な指示も追加できます。'
+                },
+                'capture-draw': {
+                    title: 'キャプチャ＆描画ツール ヘルプ',
+                    content: '画像に書き込みをして指示を補足できます。\n\n<strong>画像の貼り付け方法</strong>\nローカル動画：キャプチャボタンで現在フレームを画像化\nYouTube/Google Drive： Win+Shift+S で画面キャプチャ → 枠内クリック →  Ctrl+V で貼り付け\n\n<strong>描画ツール</strong>\nペン・矢印・図形・テキストで書き込み可能。色や線の太さ変更、消しゴム、Undo/Redoも使えます。\n<strong>【テキスト編集】</strong>選択ツールを選んだ状態で、編集したいテキストをダブルクリックすると再度入力できます。'
+                },
+                'right-panel': {
+                    title: 'マーカー / 指示一覧と各種機能 ヘルプ',
+                    content: '追加したマーカーは右側の<strong>「マーカー一覧」</strong>、指示は<strong>「指示一覧」</strong>にタイムコード順で表示されます。\nマーカーのタイムコードをクリックすると、その位置まで再生をジャンプできます。\n指示一覧では内容の編集も可能です。\n\n<strong>レポートを生成</strong>\nボタンで出力形式（大・中・小・6分割）を選び、PDFとして出力できます。\n\n<strong>メール用にコピー</strong>\n現在表示されている指示一覧（画像を含む）を、メールソフトなどに直接貼り付けられる形式でクリップボードにコピーします。\n\n<strong>現在の作業を保存</strong>\n動画、マーカー、指示のセットを名前を付けて保存します。長時間の作業の中断・再開に便利です。\n\n<strong>保存した作業を読み込む</strong>\n過去に保存した作業を一覧から選んで読み込めます。\n\n<strong>オールクリア</strong>\n作業をやり直す場合はこのボタンで全マーカーと指示を一括削除します。'
+                },
+                'dictionary-search': {
+                    title: '辞書検索 ヘルプ',
+                    content: '指示作成中に不明な単語や用語をすぐ調べられます。\n\n検索欄に調べたい語句を入力し、「Weblio」 または 「コトバンク」 ボタンをクリックすると、それぞれの辞書サイトで検索結果が開きます。\n日本語・英語どちらの単語も利用可能です。\n新しいタブで開くため、動画や作業内容はそのまま保持されます。'
+                }
+            };
+            
+            // --- ここから追加 ---
+
+            /**
+             * 画像ファイルを圧縮し、指定された品質のJPEG Blobとして返す
+             * @param {File|Blob} file - 圧縮する画像ファイル
+             * @param {number} quality - JPEGの品質 (0から1)
+             * @param {number} maxWidth - 画像の最大幅
+             * @returns {Promise<Blob>} 圧縮された画像のBlob
+             */
+            function compressImageFile(file, quality = 0.8, maxWidth = 1920) {
+              return new Promise((resolve, reject) => {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                  let w = img.width, h = img.height;
+                  if (w > maxWidth) {
+                    h = Math.round(h * (maxWidth / w));
+                    w = maxWidth;
+                  }
+                  const canvas = document.createElement('canvas');
+                  canvas.width = w; canvas.height = h;
+                  const ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0, w, h);
+                  canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(url);
+                    if (blob) {
+                      resolve(blob);
+                    } else {
+                      reject(new Error('Canvas to Blob conversion failed'));
+                    }
+                  }, 'image/jpeg', quality);
+                };
+                img.onerror = (e) => {
+                  URL.revokeObjectURL(url);
+                  reject(e);
+                };
+                img.src = url;
+              });
+            }
+
+            /**
+             * IndexedDBに保存されている画像の合計サイズをチェックし、上限を超えていれば古いものから削除する
+             * @param {IDBDatabase} db - IndexedDBのデータベースインスタンス
+             * @param {number} maxBytes - ストレージの上限バイト数 (デフォルトは500MB)
+             */
+            async function ensureStorageWithinLimit(db, maxBytes = 2000 * 1024 * 1024) {
+              if (!db) return;
+              try {
+                const allImages = await idbHelper.getAll(CONSTANTS.DB.STORE_IMAGES);
+                const totalSize = allImages.reduce((sum, img) => sum + (img.size || 0), 0);
+
+                if (totalSize <= maxBytes) {
+                  console.log(`Image storage is within limit: ${(totalSize / 1024 / 1024).toFixed(2)}MB`);
+                  return;
+                }
+                
+                console.log(`Image storage exceeds limit. Current: ${(totalSize / 1024 / 1024).toFixed(2)}MB. Pruning...`);
+                allImages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); // 古い順にソート
+
+                let currentSize = totalSize;
+                for (const img of allImages) {
+                  if (currentSize <= maxBytes) break;
+                  
+                  await idbHelper.delete(CONSTANTS.DB.STORE_IMAGES, img.id);
+                  currentSize -= (img.size || 0);
+                  console.log(`Deleted old image: ${img.id}`);
+                }
+              } catch (e) {
+                console.error('Failed to ensure storage limit:', e);
+              }
+            }
+            
+            // --- ここまで追加 ---
+
+
+/**
+             * HTML文字列を新しいタブで開く。ポップアップがブロックされた場合はファイルとしてダウンロードする
+             * @param {string} htmlString - 表示するHTMLの完全な文字列
+             * @param {string} filename - ダウンロードする場合のファイル名
+             */
+            function openHtmlInNewTab(htmlString, filename = 'report.html') {
+              const blob = new Blob([htmlString], { type: 'text/html' });
+              const url = URL.createObjectURL(blob);
+              
+              const newTab = window.open(url, '_blank');
+              
+              if (!newTab || newTab.closed || typeof newTab.closed == 'undefined') {
+                // ポップアップがブロックされたと判断し、ダウンロード処理に切り替え
+                showToast('ポップアップがブロックされました。代わりにファイルをダウンロードします。', true);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              }
+              
+              // メモリリークを防ぐため、一定時間後にBlob URLを解放
+              setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
+            }
+            // --- IndexedDB Helper ---
+            const idbHelper = {
+                db: null,
+                dbName: CONSTANTS.DB.NAME,
+                dbVersion: CONSTANTS.DB.VERSION,
+                init() {
+                    return new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.dbName, this.dbVersion);
+                        request.onerror = (event) => reject("IndexedDB error: " + request.error);
+                        request.onsuccess = (event) => {
+                            this.db = event.target.result;
+                            resolve(this.db);
+                        };
+                        request.onupgradeneeded = (event) => {
+                            const db = event.target.result;
+                            const oldVersion = event.oldVersion;
+                            console.log(`Upgrading IndexedDB from ${oldVersion} to ${CONSTANTS.DB.VERSION}`);
+
+                            // バージョン1未満（=新規作成時）の処理
+                            if (oldVersion < 1) {
+                                if (!db.objectStoreNames.contains(CONSTANTS.DB.STORE_APP_STATE)) {
+                                    db.createObjectStore(CONSTANTS.DB.STORE_APP_STATE, { keyPath: 'key' });
+                                }
+                                if (!db.objectStoreNames.contains(CONSTANTS.DB.STORE_IMAGES)) {
+                                    db.createObjectStore(CONSTANTS.DB.STORE_IMAGES, { keyPath: 'id' });
+                                }
+                                if (!db.objectStoreNames.contains(CONSTANTS.DB.STORE_SESSIONS)) {
+                                    db.createObjectStore(CONSTANTS.DB.STORE_SESSIONS, { keyPath: 'id', autoIncrement: true });
+                                }
+                            }
+
+                            // バージョン2未満からアップグレードする場合の処理（将来の拡張用）
+                            if (oldVersion < 2) {
+                                // このバージョンでは特に何もしませんが、将来のために残しておきます。
+                            }
+
+                            // --- 将来、DB構造を変える際はここに if (oldVersion < 3) { ... } を追加していきます ---
+                        };
+                    });
+                },
+                get(storeName, key) {
+                    return new Promise((resolve, reject) => {
+                        if (!this.db) return reject("DB not initialized");
+                        const transaction = this.db.transaction([storeName], 'readonly');
+                        const store = transaction.objectStore(storeName);
+                        const request = store.get(key);
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                },
+                getAll(storeName) {
+                    return new Promise((resolve, reject) => {
+                        if (!this.db) return reject("DB not initialized");
+                        const transaction = this.db.transaction([storeName], 'readonly');
+                        const store = transaction.objectStore(storeName);
+                        const request = store.getAll();
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                },
+                set(storeName, value) {
+                    return new Promise((resolve, reject) => {
+                        if (!this.db) return reject("DB not initialized");
+                        const transaction = this.db.transaction([storeName], 'readwrite');
+                        const store = transaction.objectStore(storeName);
+                        const request = store.put(value);
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                },
+                delete(storeName, key) {
+                    return new Promise((resolve, reject) => {
+                        if (!this.db) return reject("DB not initialized");
+                        const transaction = this.db.transaction([storeName], 'readwrite');
+                        const store = transaction.objectStore(storeName);
+                        const request = store.delete(key);
+                        request.onsuccess = () => resolve();
+                        request.onerror = () => reject(request.error);
+                    });
+                },
+                clear(storeName) {
+                    return new Promise((resolve, reject) => {
+                        if (!this.db) return reject("DB not initialized");
+                        const transaction = this.db.transaction([storeName], 'readwrite');
+                        const store = transaction.objectStore(storeName);
+                        const request = store.clear();
+                        request.onsuccess = () => resolve();
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+            };
+
+            let isYtApiReady = false;
+            
+            let ytApiReadyResolve;
+            const waitForYtApiReady = new Promise(resolve => { ytApiReadyResolve = resolve; });
+
+            window.onYouTubeIframeAPIReady = function() {
+                isYtApiReady = true;
+                ytApiReadyResolve();
+            };
+
+            var tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            var firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+            let ytPlayer;
+            let feedbacks = [];
+            let markers = [];
+            let currentVideoSource = { type: null, id: null, name: null };
+
+            // DOM Elements
+            const urlInput = document.getElementById('url-input');
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const getTimecodeBtn = document.getElementById('get-timecode-btn');
+            const feedbackList = document.getElementById('feedback-list');
+            const noFeedbackMsg = document.getElementById('no-feedback-msg');
+            const exportPdfBtn = document.getElementById('export-pdf-btn');
+            const reviewSection = document.getElementById('review-section');
+            const playerWrapper = document.getElementById('player-wrapper');
+            const playerPlaceholder = document.getElementById('player-placeholder');
+            const youtubePlayerDiv = document.getElementById('youtube-player');
+            const genericPlayer = document.getElementById('generic-player');
+            
+            const pasteTarget = document.getElementById('paste-target');
+            const pastePlaceholder = document.getElementById('paste-placeholder');
+            const pastedImage = document.getElementById('pasted-image');
+            const drawingCanvas = document.getElementById('drawing-canvas'); 
+            const drawingTools = document.getElementById('drawing-tools');
+            const timecodeEl = document.getElementById('timecode');
+            const feedbackText = document.getElementById('feedback-text');
+            const saveFeedbackBtn = document.getElementById('save-feedback-btn');
+            const cancelFeedbackBtn = document.getElementById('cancel-feedback-btn');
+            const colorPicker = document.getElementById('color-picker');
+            const brushSize = document.getElementById('brush-size');
+            const clearCanvasBtn = document.getElementById('clear-canvas-btn');
+            const videoCaptureBtn = document.getElementById('video-capture-btn');
+            const manualCaptureInfo = document.getElementById('manual-capture-info');
+            const undoBtn = document.getElementById('undo-btn');
+            const redoBtn = document.getElementById('redo-btn');
+            const toolDescription = document.getElementById('tool-description');
+            
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingMessage = document.getElementById('loading-message');
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            
+            const manualModal = document.getElementById('manual-modal');
+            const manualLink = document.getElementById('manual-link');
+            const closeManualModalBtn = document.getElementById('close-manual-modal-btn');
+
+            // Marker specific DOM Elements
+            const addMarkerBtn = document.getElementById('add-marker-btn');
+            const markerList = document.getElementById('marker-list');
+            const noMarkerMsg = document.getElementById('no-marker-msg');
+            const prerollInput = document.getElementById('preroll-input');
+            const prevMarkerBtn = document.getElementById('prev-marker-btn');
+            const nextMarkerBtn = document.getElementById('next-marker-btn');
+            const customFullscreenBtn = document.getElementById('custom-fullscreen-btn');
+            const fullscreenControls = document.getElementById('fullscreen-controls');
+            const fsPrevMarkerBtn = document.getElementById('fs-prev-marker-btn');
+            const fsAddMarkerBtn = document.getElementById('fs-add-marker-btn');
+            const fsNextMarkerBtn = document.getElementById('fs-next-marker-btn');
+            const fsExitBtn = document.getElementById('fs-exit-btn');
+            const rewindBtn = document.getElementById('rewind-5s-btn');
+            const ffBtn = document.getElementById('ff-5s-btn');
+            const fsRewindBtn = document.getElementById('fs-rewind-5s-btn');
+            const fsFfBtn = document.getElementById('fs-ff-5s-btn');
+
+            const downloadJpegBtn = document.getElementById('download-jpeg-btn');
+            // Clear Buttons
+            const clearMarkersBtn = document.getElementById('clear-markers-btn');
+            const clearFeedbacksBtn = document.getElementById('clear-feedbacks-btn');
+            const allClearBtn = document.getElementById('all-clear-btn');
+
+            // Confirm Modal Elements
+            const confirmModal = document.getElementById('confirm-modal');
+            const confirmModalTitle = document.getElementById('confirm-modal-title');
+            const confirmModalOkBtn = document.getElementById('confirm-modal-ok-btn');
+            const confirmModalCancelBtn = document.getElementById('confirm-modal-cancel-btn');
+            const confirmModalContinueBtn = document.getElementById('confirm-modal-continue-btn');
+
+            // Image Size Modal Elements
+            const imageSizeModal = document.getElementById('image-size-modal');
+            const imageSizeModalCancelBtn = document.getElementById('image-size-modal-cancel-btn');
+
+            // Help Modal Elements
+            const helpModal = document.getElementById('help-modal');
+            const helpModalTitle = document.getElementById('help-modal-title');
+            const helpModalContentText = document.getElementById('help-modal-content-text');
+            const closeHelpModalBtn = document.getElementById('close-help-modal-btn');
+
+            
+
+            // Session Management Elements
+            const saveSessionBtn = document.getElementById('save-session-btn');
+            const loadSessionBtn = document.getElementById('load-session-btn');
+            const inputModal = document.getElementById('input-modal');
+            const inputModalTitle = document.getElementById('input-modal-title');
+            const inputModalText = document.getElementById('input-modal-text');
+            const inputModalOkBtn = document.getElementById('input-modal-ok-btn');
+            const inputModalCancelBtn = document.getElementById('input-modal-cancel-btn');
+            const loadSessionModal = document.getElementById('load-session-modal');
+            const loadSessionList = document.getElementById('load-session-list');
+            const loadSessionModalCloseBtn = document.getElementById('load-session-modal-close-btn');
+            
+            let ctx;
+            let isDrawing = false;
+            let currentTool = CONSTANTS.TOOLS.SELECT;
+            let isTimecodeSetForCurrentFeedback = false;
+            
+            let drawingObjects = [];
+            let isDragging = false;
+            let isResizing = false;
+            let selectedObjectIndex = -1;
+            let dragOffsetX, dragOffsetY;
+            let resizeStartX, resizeStartY, originalObjectState;
+            let mouseMoved = false;
+
+            let history = [];
+            let historyIndex = -1;
+            let ytTimeUpdateInterval = null;
+            let editingFeedbackId = null; // ★編集中の指示IDを記憶する変数
+            let currentSessionId = null;  // ★ここを追加：現在開いているセッションのIDを記憶する「しるし」です
+
+            
+            const resizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    if (entry.target === pastedImage && !pastedImage.classList.contains(CONSTANTS.CSS.HIDDEN)) {
+                        setupCanvas();
+                    }
+                }
+            });
+
+            function setupUrlInputAndTooltips() {
+                const urlErrorEl = document.getElementById('url-error');
+                
+                const urlPatternYoutube = /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})(?:\S+)?$/i;
+                const urlPatternDrive = /^(?:https?:\/\/)?drive\.google\.com\/(?:file\/d\/|open\?id=)([\w-]+)(?:\S+)?$/i;
+
+                urlInput.addEventListener('input', () => {
+                    const val = urlInput.value.trim();
+                    if (val === '') {
+                        urlInput.classList.remove('border-red-500', 'focus:ring-red-500');
+                        urlInput.classList.add('focus:ring-blue-500');
+                        urlErrorEl.classList.add('hidden');
+                        return;
+                    }
+                    if (urlPatternYoutube.test(val) || urlPatternDrive.test(val)) {
+                        urlInput.classList.remove('border-red-500', 'focus:ring-red-500');
+                        urlInput.classList.add('focus:ring-blue-500');
+                        urlErrorEl.classList.add('hidden');
+                    } else {
+                        urlInput.classList.remove('focus:ring-blue-500');
+                        urlInput.classList.add('border-red-500', 'focus:ring-red-500');
+                        urlErrorEl.classList.remove('hidden');
+                    }
+                });
+
+                const tooltipTriggers = document.querySelectorAll('[data-tooltip-trigger]');
+                tooltipTriggers.forEach(trigger => {
+                    const tooltipId = trigger.dataset.tooltipTrigger;
+                    const tooltip = document.getElementById(tooltipId);
+                    if (!tooltip) return;
+
+                    const showTooltip = () => {
+                        tooltip.classList.add('show');
+                        const triggerRect = trigger.getBoundingClientRect();
+                        const tooltipRect = tooltip.getBoundingClientRect();
+                        const viewportWidth = window.innerWidth;
+                        tooltip.style.left = `${trigger.offsetLeft + trigger.offsetWidth / 2 - tooltip.offsetWidth / 2}px`;
+                        tooltip.style.transform = '';
+                        const newTooltipRect = tooltip.getBoundingClientRect();
+                        if (newTooltipRect.left < 10) {
+                            tooltip.style.left = '0px';
+                        } else if (newTooltipRect.right > viewportWidth - 10) {
+                            tooltip.style.left = `${viewportWidth - tooltip.offsetWidth - 10 - triggerRect.left + trigger.offsetLeft}px`;
+                        }
+                    };
+
+                    const hideTooltip = () => { tooltip.classList.remove('show'); };
+                    trigger.addEventListener('mouseenter', showTooltip);
+                    trigger.addEventListener('mouseleave', hideTooltip);
+                    trigger.addEventListener('focus', showTooltip);
+                    trigger.addEventListener('blur', hideTooltip);
+                });
+            }
+
+            function cleanupPreviousSource() {
+                if (currentVideoSource?.type === CONSTANTS.SOURCE_TYPE.LOCAL && currentVideoSource.id?.startsWith('blob:')) {
+                    URL.revokeObjectURL(currentVideoSource.id);
+                    console.log('古いローカル動画のメモリを解放しました:', currentVideoSource.id);
+                }
+            }
+
+            function getYouTubeVideoId(url) {
+                if (!url) return null;
+                const patterns = [
+                    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([\w-]{11})/,
+                    /(?:https?:\/\/)?youtu\.be\/([\w-]{11})/
+                ];
+                for (const pattern of patterns) {
+                    const match = url.match(pattern);
+                    if (match && match[1]) return match[1];
+                }
+                return null;
+            }
+
+            function getGoogleDriveFileId(url) {
+                if (!url) return null;
+                const match = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([\w-]+)/);
+                return match ? match[1] : null;
+            }
+
+            async function saveLastState() {
+                try {
+                    const sourceToSave = currentVideoSource.type === CONSTANTS.SOURCE_TYPE.LOCAL 
+                        ? { type: CONSTANTS.SOURCE_TYPE.LOCAL, id: null, name: currentVideoSource.name }
+                        : currentVideoSource;
+                    
+                    const feedbacksMetadata = feedbacks.map(({ imageSrcForExport, ...rest }) => rest);
+
+                    const appState = {
+                        key: CONSTANTS.DB.KEY_LAST_STATE,
+                        source: sourceToSave,
+                        feedbacks: feedbacksMetadata,
+                        markers: markers
+                    };
+                    await idbHelper.set(CONSTANTS.DB.STORE_APP_STATE, appState);
+                } catch (e) {
+                    console.error("IndexedDBへの自動保存に失敗: ", e);
+                    showToast("作業状態の自動保存に失敗しました。", true);
+                }
+            }
+            
+            async function initializeYoutubePlayer(videoId) {
+                await waitForYtApiReady;
+
+                playerPlaceholder.classList.add(CONSTANTS.CSS.HIDDEN);
+                genericPlayer.classList.add(CONSTANTS.CSS.HIDDEN);
+                youtubePlayerDiv.classList.remove(CONSTANTS.CSS.HIDDEN);
+                reviewSection.classList.remove(CONSTANTS.CSS.HIDDEN);
+                videoCaptureBtn.classList.add(CONSTANTS.CSS.HIDDEN);
+                manualCaptureInfo.classList.remove(CONSTANTS.CSS.HIDDEN);
+
+                if (ytPlayer) {
+                    ytPlayer.loadVideoById(videoId);
+                } else {
+                    ytPlayer = new YT.Player('youtube-player', {
+                        height: '100%', width: '100%', videoId: videoId,
+                        playerVars: CONSTANTS.PLAYER.YT_PLAYER_VARS,
+                        events: { 
+                            'onReady': onPlayerReady,
+                            'onStateChange': onPlayerStateChange
+                        }
+                    });
+                }
+            }
+
+            function onPlayerStateChange(event) {
+                if (event.data == YT.PlayerState.PLAYING) {
+                    if(ytTimeUpdateInterval) clearInterval(ytTimeUpdateInterval);
+                    ytTimeUpdateInterval = setInterval(() => {
+                        updateMarkerJumpButtonsState();
+                    }, 250);
+                } else {
+                    if(ytTimeUpdateInterval) clearInterval(ytTimeUpdateInterval);
+                     updateMarkerJumpButtonsState();
+                }
+            }
+
+            function initializeGenericPlayer(url, type) {
+                playerPlaceholder.classList.add(CONSTANTS.CSS.HIDDEN);
+                youtubePlayerDiv.classList.add(CONSTANTS.CSS.HIDDEN);
+                genericPlayer.classList.remove(CONSTANTS.CSS.HIDDEN);
+                reviewSection.classList.remove(CONSTANTS.CSS.HIDDEN);
+                
+                if (type === CONSTANTS.SOURCE_TYPE.LOCAL) {
+                    videoCaptureBtn.classList.remove(CONSTANTS.CSS.HIDDEN);
+                    manualCaptureInfo.classList.add(CONSTANTS.CSS.HIDDEN);
+                } else {
+                    videoCaptureBtn.classList.add(CONSTANTS.CSS.HIDDEN);
+                    manualCaptureInfo.classList.remove(CONSTANTS.CSS.HIDDEN);
+                }
+
+                genericPlayer.src = url;
+                genericPlayer.oncanplay = onPlayerReady;
+            }
+
+            urlInput.addEventListener('input', async () => {
+                const url = urlInput.value;
+                const youtubeId = getYouTubeVideoId(url);
+                const googleDriveId = getGoogleDriveFileId(url);
+
+                if (url.trim() !== '' && !youtubeId && !googleDriveId) {
+                    return;
+                }
+
+                let videoType, videoId, videoName, playerInitFunc, playerInitArgs;
+
+                if (youtubeId && (currentVideoSource.type !== CONSTANTS.SOURCE_TYPE.YOUTUBE || currentVideoSource.id !== youtubeId)) {
+                    videoType = CONSTANTS.SOURCE_TYPE.YOUTUBE;
+                    videoId = youtubeId;
+                    videoName = `YouTube Video (${youtubeId})`;
+                    playerInitFunc = initializeYoutubePlayer;
+                    playerInitArgs = [youtubeId];
+                } else if (googleDriveId && (currentVideoSource.type !== CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE || currentVideoSource.id !== googleDriveId)) {
+                    const driveUrl = `https://drive.google.com/uc?export=view&id=${googleDriveId}`;
+                    videoType = CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE;
+                    videoId = googleDriveId;
+                    videoName = `Google Drive Video (${googleDriveId})`;
+                    playerInitFunc = initializeGenericPlayer;
+                    playerInitArgs = [driveUrl, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE];
+                } else {
+                    return;
+                }
+
+                const loadWithClear = async () => {
+                    cleanupPreviousSource();
+                    currentVideoSource = { type: videoType, id: videoId, name: videoName };
+                    currentSessionId = null; // ★ここを追加： "しるし"を消します
+                    feedbacks = [];
+                    markers = [];
+                    resetFeedbackForm();
+                    await renderFeedbacks();
+                    renderMarkers();
+                    await saveLastState();
+                    await playerInitFunc(...playerInitArgs);
+                };
+                
+                const loadWithoutClear = async () => {
+                    cleanupPreviousSource();
+                    currentVideoSource = { type: videoType, id: videoId, name: videoName };
+                    currentSessionId = null; // ★ここを追加： "しるし"を消します
+                    await saveLastState();
+                    await playerInitFunc(...playerInitArgs);
+                };
+
+                if (currentVideoSource.type && (feedbacks.length > 0 || markers.length > 0)) {
+                    showConfirmModal(
+                        '新しい動画を読み込みます。<br>現在の指示とマーカーの扱いを選択してください。',
+                        loadWithClear,
+                        loadWithoutClear
+                    );
+                } else {
+                    await loadWithClear();
+                }
+            });
+
+            async function handleLocalFile(file) {
+                if (!file || !file.type.startsWith('video/')) {
+                    showToast('動画ファイルを選択してください。', true);
+                    return;
+                }
+
+                const fileUrl = URL.createObjectURL(file);
+
+                const loadWithClear = async () => {
+                    console.log('新しいローカルファイルを読み込み、データをクリアします。');
+                    cleanupPreviousSource();
+                    urlInput.value = '';
+                    currentVideoSource = { type: CONSTANTS.SOURCE_TYPE.LOCAL, id: fileUrl, name: file.name };
+                    currentSessionId = null; // ★ここを追加：新しい作業なので"しるし"を消します
+                    feedbacks = [];
+                    markers = [];
+                    resetFeedbackForm();
+                    await renderFeedbacks();
+                    renderMarkers();
+                    initializeGenericPlayer(fileUrl, CONSTANTS.SOURCE_TYPE.LOCAL);
+                    await saveLastState();
+                };
+
+                const loadWithoutClear = async () => {
+                    console.log('新しいローカルファイルを読み込み、データを保持します。');
+                    cleanupPreviousSource();
+                    urlInput.value = '';
+                    currentVideoSource = { type: CONSTANTS.SOURCE_TYPE.LOCAL, id: fileUrl, name: file.name };
+                    initializeGenericPlayer(fileUrl, CONSTANTS.SOURCE_TYPE.LOCAL);
+                    await saveLastState();
+                };
+
+                if (currentVideoSource.type && (feedbacks.length > 0 || markers.length > 0)) {
+                    showConfirmModal(
+                        '新しい動画を読み込みます。<br>現在の指示とマーカーの扱いを選択してください。',
+                        loadWithClear,
+                        loadWithoutClear
+                    );
+                } else {
+                    await loadWithClear();
+                }
+            }
+
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add(CONSTANTS.CSS.DRAG_OVER); });
+            dropZone.addEventListener('dragleave', () => { dropZone.classList.remove(CONSTANTS.CSS.DRAG_OVER); });
+            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove(CONSTANTS.CSS.DRAG_OVER); handleLocalFile(e.dataTransfer.files[0]); });
+            fileInput.addEventListener('change', (e) => { handleLocalFile(e.target.files[0]); e.target.value = ''; });
+            
+            async function loadLastStateAndInitializePlayer() {
+                try {
+                    const data = await idbHelper.get(CONSTANTS.DB.STORE_APP_STATE, CONSTANTS.DB.KEY_LAST_STATE);
+                    if (data && data.source && data.source.type) {
+                        feedbacks = data.feedbacks || [];
+                        markers = data.markers || [];
+                        currentVideoSource = data.source;
+                        
+                        await renderFeedbacks();
+                        renderMarkers();
+                        updateSaveSessionButtonState();
+
+                        if (data.source.type === CONSTANTS.SOURCE_TYPE.YOUTUBE) {
+                            urlInput.value = `https://www.youtube.com/watch?v=${data.source.id}`;
+                            await initializeYoutubePlayer(data.source.id);
+                        } else if (data.source.type === CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE) {
+                            urlInput.value = `https://drive.google.com/file/d/${data.source.id}/view`;
+                            const driveUrl = `https://drive.google.com/uc?export=view&id=${data.source.id}`;
+                            initializeGenericPlayer(driveUrl, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE);
+                        } else if (data.source.type === CONSTANTS.SOURCE_TYPE.LOCAL) {
+                            playerPlaceholder.textContent = `前回はローカルファイル「${data.source.name || '不明なファイル'}」をレビューしていました。再度ファイルをドラッグ＆ドロップしてください。`;
+                            reviewSection.classList.remove(CONSTANTS.CSS.HIDDEN);
+                            videoCaptureBtn.classList.remove(CONSTANTS.CSS.HIDDEN);
+                            manualCaptureInfo.classList.add(CONSTANTS.CSS.HIDDEN);
+                        }
+                    }
+                } catch(e) {
+                    console.error("IndexedDBからの読み込みに失敗: ", e);
+                    showToast("保存データの読み込みに失敗しました。", true);
+                }
+                updateAllClearButtonState();
+            }
+
+            function onPlayerReady() {
+                getTimecodeBtn.disabled = false;
+                addMarkerBtn.disabled = false;
+                customFullscreenBtn.disabled = false;
+                rewindBtn.disabled = false;
+                ffBtn.disabled = false;
+                fsRewindBtn.disabled = false;
+                fsFfBtn.disabled = false;
+                updateMarkerJumpButtonsState();
+                updateSaveSessionButtonState();
+            }
+
+            function formatTime(time) {
+                const roundTime = Math.round(time);
+                const h = Math.floor(roundTime / 3600).toString().padStart(2, '0');
+                const m = Math.floor((roundTime % 3600) / 60).toString().padStart(2, '0');
+                const s = (roundTime % 60).toString().padStart(2, '0');
+                return `${h}:${m}:${s}`;
+            }
+
+            function parseTimeToSeconds(timeString) {
+                if (!timeString || typeof timeString !== 'string') return 0;
+                const parts = timeString.split(':').map(part => parseInt(part, 10) || 0);
+                while (parts.length < 3) { parts.unshift(0); }
+                const [h, m, s] = parts;
+                return h * 3600 + m * 60 + s;
+            }
+
+            function captureTimecode() {
+                let currentTime = 0;
+                if (currentVideoSource.type === CONSTANTS.SOURCE_TYPE.YOUTUBE && ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+                    ytPlayer.pauseVideo();
+                    currentTime = ytPlayer.getCurrentTime();
+                } else if ([CONSTANTS.SOURCE_TYPE.LOCAL, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE].includes(currentVideoSource.type)) {
+                    genericPlayer.pause();
+                    currentTime = genericPlayer.currentTime;
+                }
+                const prerollSeconds = parseTimeToSeconds(prerollInput.value);
+                const finalTimeSeconds = Math.max(0, currentTime - prerollSeconds);
+                timecodeEl.textContent = formatTime(finalTimeSeconds);
+                isTimecodeSetForCurrentFeedback = true;
+            }
+
+            getTimecodeBtn.addEventListener('click', () => {
+                captureTimecode();
+                feedbackText.focus();
+            });
+
+// ▼▼▼ ハイライト管理用のヘルパー関数 ▼▼▼
+            /**
+             * 指定されたIDのフィードバック項目をハイライトする
+             * @param {number | null} itemId - ハイライトするID。nullの場合は全解除。
+             */
+            function highlightFeedbackItem(itemId) {
+                // まず、全ての項目からハイライト用の'editing'クラスを削除する
+                feedbackList.querySelectorAll('.editing').forEach(el => el.classList.remove('editing'));
+
+                // itemIdが指定されていれば、その項目にだけ'editing'クラスを追加する
+                if (itemId) {
+                    const itemToHighlight = feedbackList.querySelector(`.feedback-item[data-id="${itemId}"]`);
+                    if (itemToHighlight) {
+                        itemToHighlight.classList.add('editing');
+                    }
+                }
+            }
+            // ▲▲▲ ハイライト管理用のヘルパー関数 ▲▲▲
+            // ▼▼▼【ここから差し替え】▼▼▼
+    function resetFeedbackForm() {
+        pastedImage.src = '';
+        pastedImage.classList.add(CONSTANTS.CSS.HIDDEN);
+        pastePlaceholder.classList.remove(CONSTANTS.CSS.HIDDEN);
+        feedbackText.value = '';
+        saveFeedbackBtn.disabled = true;
+        drawingTools.classList.add(CONSTANTS.CSS.HIDDEN);
+        
+        if (ctx) ctx.clearRect(0, 0, drawingCanvas.clientWidth, drawingCanvas.clientHeight);
+        
+        isTimecodeSetForCurrentFeedback = false;
+        drawingObjects = [];
+        selectedObjectIndex = -1;
+        
+        history = [JSON.stringify([])];
+        historyIndex = 0;
+        updateHistoryButtons();
+
+        pasteTarget.style.paddingTop = '56.25%';
+        resizeObserver.unobserve(pastedImage);
+
+        // ★編集状態を解除し、ボタンの表示を元に戻す
+        editingFeedbackId = null;
+        highlightFeedbackItem(null); // ★ハイライトを解除
+        saveFeedbackBtn.textContent = '指示を保存';
+    }
+    // ▲▲▲【ここまで差し替え】▲▲▲
+
+            cancelFeedbackBtn.addEventListener('click', resetFeedbackForm);
+
+            feedbackText.addEventListener('input', () => {
+              if (!editingFeedbackId) highlightFeedbackItem(null); // ★ハイライトを解除
+                if (!isTimecodeSetForCurrentFeedback && feedbackText.value.length > 0) {
+                    captureTimecode();
+                }
+                saveFeedbackBtn.disabled = feedbackText.value.trim() === '';
+            });
+
+            pasteTarget.addEventListener('paste', async (e) => {
+              if (!editingFeedbackId) highlightFeedbackItem(null); // ★ハイライトを解除
+                if (reviewSection.classList.contains(CONSTANTS.CSS.HIDDEN)) return;
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (const item of items) {
+                    if (item.type.indexOf('image') === 0) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+
+                        if (!file) return;
+
+                        try {
+                            // 圧縮処理を呼び出す
+                            const compressedBlob = await compressImageFile(file);
+
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                                pastedImage.src = event.target.result;
+                                pastedImage.onload = () => {
+                                    const finalAspectRatio = (pastedImage.naturalHeight / pastedImage.naturalWidth) * 100;
+                                    pasteTarget.style.paddingTop = `${finalAspectRatio}%`;
+                                    pastedImage.classList.remove(CONSTANTS.CSS.HIDDEN);
+                                    pastePlaceholder.classList.add(CONSTANTS.CSS.HIDDEN);
+                                    if (!isTimecodeSetForCurrentFeedback) captureTimecode();
+                                    saveFeedbackBtn.disabled = false;
+                                    resizeObserver.observe(pastedImage);
+                                    setupCanvas();
+                                    pastedImage.onload = null;
+                                };
+                            };
+                            reader.readAsDataURL(compressedBlob);
+                            return;
+                        } catch (err) {
+                            console.error("Image processing failed:", err);
+                            showToast('画像の処理に失敗しました。', true);
+                            return;
+                        }
+                    }
+                }
+            });
+
+            let imageRenderInfo = { x: 0, y: 0, width: 0, height: 0 };
+
+            function setupCanvas() {
+                drawingTools.classList.remove(CONSTANTS.CSS.HIDDEN);
+                const container = pasteTarget;
+                const img = pastedImage;
+                const containerRect = container.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+
+                const containerAspectRatio = containerRect.width / containerRect.height;
+                const imageAspectRatio = img.naturalWidth / img.naturalHeight;
+
+                let renderWidth, renderHeight, offsetX, offsetY;
+
+                if (imageAspectRatio > containerAspectRatio) {
+                    renderWidth = containerRect.width;
+                    renderHeight = renderWidth / imageAspectRatio;
+                    offsetX = 0;
+                    offsetY = (containerRect.height - renderHeight) / 2;
+                } else {
+                    renderHeight = containerRect.height;
+                    renderWidth = renderHeight * imageAspectRatio;
+                    offsetY = 0;
+                    offsetX = (containerRect.width - renderWidth) / 2;
+                }
+
+                imageRenderInfo = { x: offsetX, y: offsetY, width: renderWidth, height: renderHeight };
+
+                drawingCanvas.style.width = `${renderWidth}px`;
+                drawingCanvas.style.height = `${renderHeight}px`;
+                drawingCanvas.style.top = `${offsetY}px`;
+                drawingCanvas.style.left = `${offsetX}px`;
+
+                drawingCanvas.width = Math.round(renderWidth * dpr);
+                drawingCanvas.height = Math.round(renderHeight * dpr);
+
+                ctx = drawingCanvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                
+                document.querySelector(`.tool-btn[data-tool="${CONSTANTS.TOOLS.SELECT}"]`).classList.add(CONSTANTS.CSS.TOOL_SELECTED);
+                if (drawingObjects.length === 0) saveState(); 
+                
+                redrawAllCanvases(ctx);
+            }
+
+            function redrawAllCanvases(targetCtx) {
+                if (!targetCtx) return;
+                
+                targetCtx.clearRect(0, 0, targetCtx.canvas.clientWidth, targetCtx.canvas.clientHeight);
+
+                drawingObjects.forEach(item => {
+                    drawShapeWithCtx(targetCtx, item);
+                });
+                
+                if (selectedObjectIndex > -1 && drawingObjects[selectedObjectIndex]) {
+                    const selectedObject = drawingObjects[selectedObjectIndex];
+                    const bounds = getObjectBounds(selectedObject);
+                    targetCtx.strokeStyle = '#3b82f6';
+                    targetCtx.lineWidth = 1;
+                    targetCtx.setLineDash([4, 2]);
+                    targetCtx.strokeRect(bounds.x - 4, bounds.y - 4, bounds.w + 8, bounds.h + 8);
+                    targetCtx.setLineDash([]);
+                    targetCtx.fillStyle = '#3b82f6';
+                    targetCtx.fillRect(bounds.x + bounds.w, bounds.y + bounds.h, 8, 8);
+                }
+            }
+
+            function drawShapeWithCtx(c, item, scaleX = 1, scaleY = 1) {
+                c.strokeStyle = item.color;
+                const scaledLineWidth = (item.lineWidth || item.size) * Math.min(scaleX, scaleY);
+                c.lineWidth = scaledLineWidth;
+                c.fillStyle = item.color;
+
+                if (item.type === CONSTANTS.TOOLS.PEN) {
+                    c.beginPath();
+                    c.moveTo(item.points[0].x * scaleX, item.points[0].y * scaleY);
+                    for (let i = 1; i < item.points.length; i++) c.lineTo(item.points[i].x * scaleX, item.points[i].y * scaleY);
+                    c.stroke();
+                } else if (item.type === CONSTANTS.TOOLS.RECT) {
+                    c.strokeRect(item.x * scaleX, item.y * scaleY, item.w * scaleX, item.h * scaleY);
+                } else if (item.type === CONSTANTS.TOOLS.CIRCLE) {
+                    c.beginPath();
+                    c.ellipse((item.x + item.w / 2) * scaleX, (item.y + item.h / 2) * scaleY, Math.abs(item.w / 2) * scaleX, Math.abs(item.h / 2) * scaleY, 0, 0, 2 * Math.PI);
+                    c.stroke();
+                } else if (item.type === CONSTANTS.TOOLS.ARROW) {
+                    drawArrowWithCtx(c, item.x * scaleX, item.y * scaleY, item.endX * scaleX, item.endY * scaleY);
+                } else if (item.type === CONSTANTS.TOOLS.TEXT) {
+                    const textHeight = item.size * scaleY;
+                    c.font = `${textHeight}px sans-serif`;
+                    const metrics = c.measureText(item.text);
+                    const textWidth = metrics.width;
+                    const tempFillStyle = c.fillStyle;
+                    
+                    c.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    c.fillRect((item.x * scaleX) - 2, (item.y * scaleY) - textHeight + 2, textWidth + 4, textHeight + 4);
+
+                    c.fillStyle = tempFillStyle;
+                    c.fillText(item.text, item.x * scaleX, item.y * scaleY);
+                }
+            }
+            
+            function drawArrowWithCtx(c, fromx, fromy, tox, toy) {
+                const headlen = 10 * (c.lineWidth / 2);
+                const dx = tox - fromx;
+                const dy = toy - fromy;
+                const angle = Math.atan2(dy, dx);
+                c.beginPath();
+                c.moveTo(fromx, fromy);
+                c.lineTo(tox, toy);
+                c.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+                c.moveTo(tox, toy);
+                c.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+                c.stroke();
+            }
+            
+            function getCanvasCoords(e) {
+                const rect = drawingCanvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                return { x, y };
+            }
+
+            function getObjectAtPosition(x, y) {
+                 if (!ctx) return null;
+                for (let i = drawingObjects.length - 1; i >= 0; i--) {
+                    const obj = drawingObjects[i];
+                    const bounds = getObjectBounds(obj);
+                    const padding = (obj.lineWidth || 5) / 2 + 5;
+                    if (x >= bounds.x - padding && x <= bounds.x + bounds.w + padding && y >= bounds.y - padding && y <= bounds.y + bounds.h + padding) {
+                        return { index: i, object: obj };
+                    }
+                }
+                return null;
+            }
+
+            function getObjectBounds(obj) {
+                if (!obj) return { x: 0, y: 0, w: 0, h: 0 };
+                switch(obj.type) {
+                    case CONSTANTS.TOOLS.PEN:
+                        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                        obj.points.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+                        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+                    case CONSTANTS.TOOLS.RECT: case CONSTANTS.TOOLS.CIRCLE:
+                        return { x: Math.min(obj.x, obj.x + obj.w), y: Math.min(obj.y, obj.y + obj.h), w: Math.abs(obj.w), h: Math.abs(obj.h) };
+                    case CONSTANTS.TOOLS.ARROW:
+                         return { x: Math.min(obj.x, obj.endX), y: Math.min(obj.y, obj.endY), w: Math.abs(obj.x - obj.endX), h: Math.abs(obj.y - obj.endY) };
+                    case CONSTANTS.TOOLS.TEXT:
+                        const tempCtx = drawingCanvas.getContext('2d');
+                        tempCtx.font = `${obj.size}px sans-serif`;
+                        const metrics = tempCtx.measureText(obj.text);
+                        return { x: obj.x, y: obj.y - obj.size, w: metrics.width, h: obj.size };
+                    default: return { x: 0, y: 0, w: 0, h: 0 };
+                }
+            }
+
+            function isHittingResizeHandle(x, y, obj) {
+                if (!obj) return false;
+                const bounds = getObjectBounds(obj);
+                const handleX = bounds.x + bounds.w;
+                const handleY = bounds.y + bounds.h;
+                return x >= handleX - 2 && x <= handleX + CONSTANTS.DRAWING.RESIZE_HANDLE_SIZE + 2 && y >= handleY - 2 && y <= handleY + CONSTANTS.DRAWING.RESIZE_HANDLE_SIZE + 2;
+            }
+
+            function createInputBox(x, y, objectToEdit = null) {
+                const existingBox = document.getElementById('text-input-box');
+                if (existingBox) existingBox.blur();
+
+                const inputBox = document.createElement('textarea');
+                inputBox.id = 'text-input-box';
+
+                const isEditing = objectToEdit !== null;
+                const size = isEditing ? objectToEdit.size : (parseInt(brushSize.value) * 2 + 10);
+                const color = isEditing ? objectToEdit.color : colorPicker.value;
+                const initialText = isEditing ? objectToEdit.text : '';
+                
+                const initialX = isEditing ? objectToEdit.x : x;
+                const initialY = isEditing ? objectToEdit.y : y;
+
+                inputBox.style.left = `${initialX + imageRenderInfo.x}px`;
+                inputBox.style.top = `${(initialY - size) + imageRenderInfo.y}px`;
+                
+                inputBox.style.color = color;
+                inputBox.style.fontSize = `${size}px`;
+                inputBox.value = initialText;
+                inputBox.rows = 1;
+                
+                drawingCanvas.parentElement.appendChild(inputBox);
+
+                inputBox.focus();
+                if (isEditing) {
+                    inputBox.select();
+                }
+
+                const autoResize = () => {
+                    inputBox.style.height = 'auto';
+                    inputBox.style.height = `${inputBox.scrollHeight}px`;
+                    const maxWidth = drawingCanvas.clientWidth * 0.8;
+                    inputBox.style.width = 'auto';
+                    if (inputBox.scrollWidth > maxWidth) {
+                        inputBox.style.width = `${maxWidth}px`;
+                        inputBox.style.overflowY = 'auto';
+                    } else {
+                        inputBox.style.width = `${inputBox.scrollWidth}px`;
+                        inputBox.style.overflowY = 'hidden';
+                    }
+                };
+                autoResize();
+
+                const finalizeTextInput = () => {
+                    const text = inputBox.value.trim();
+                    if (text) {
+                        const textObj = {
+                            type: CONSTANTS.TOOLS.TEXT,
+                            text: text,
+                            x: initialX,
+                            y: initialY,
+                            color: color,
+                            size: size,
+                        };
+                        drawingObjects.push(textObj);
+                    }
+                    
+                    saveState();
+                    if (inputBox.parentNode) inputBox.parentNode.removeChild(inputBox);
+                    redrawAllCanvases(ctx);
+                    
+                    const selectBtn = drawingTools.querySelector(`.tool-btn[data-tool="${CONSTANTS.TOOLS.SELECT}"]`);
+                    if (selectBtn) {
+                        selectBtn.click();
+                        drawingCanvas.focus();
+                    }
+                };
+
+                inputBox.addEventListener('input', autoResize);
+                inputBox.addEventListener('blur', finalizeTextInput);
+                inputBox.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        inputBox.blur();
+                    }
+                });
+            }
+
+            drawingCanvas.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'touch' || e.pointerType === 'pen') e.preventDefault(); 
+                mouseMoved = false;
+                const existingBox = document.getElementById('text-input-box');
+                if (existingBox) { existingBox.blur(); e.stopPropagation(); return; }
+                const { x, y } = getCanvasCoords(e);
+                if (currentTool === CONSTANTS.TOOLS.SELECT) {
+                    if (selectedObjectIndex > -1 && isHittingResizeHandle(x, y, drawingObjects[selectedObjectIndex])) {
+                        isResizing = true; isDragging = false;
+                        resizeStartX = x; resizeStartY = y;
+                        originalObjectState = JSON.parse(JSON.stringify(drawingObjects[selectedObjectIndex]));
+                        return;
+                    }
+                    const hit = getObjectAtPosition(x, y);
+                    if (hit) {
+                        selectedObjectIndex = hit.index; isDragging = true;
+                        dragOffsetX = x; dragOffsetY = y;
+                    } else {
+                        selectedObjectIndex = -1;
+                    }
+                    redrawAllCanvases(ctx);
+                    return;
+                }
+                selectedObjectIndex = -1;
+                if (currentTool === CONSTANTS.TOOLS.PEN) {
+                    isDrawing = true;
+                    const newStroke = { type: CONSTANTS.TOOLS.PEN, points: [{x, y}], color: colorPicker.value, lineWidth: brushSize.value };
+                    drawingObjects.push(newStroke);
+                } else if ([CONSTANTS.TOOLS.RECT, CONSTANTS.TOOLS.CIRCLE, CONSTANTS.TOOLS.ARROW].includes(currentTool)) {
+                    isDrawing = true;
+                    const newShape = { type: currentTool, x, y, w: 0, h: 0, endX: x, endY: y, color: colorPicker.value, lineWidth: brushSize.value };
+                    drawingObjects.push(newShape);
+                }
+            });
+
+            drawingCanvas.addEventListener('pointermove', (e) => {
+                if (isDrawing || isDragging || isResizing) e.preventDefault(); 
+                const { x, y } = getCanvasCoords(e);
+                if (!isDrawing && !isDragging && !isResizing) {
+                    let cursor = 'default';
+                     if (currentTool === CONSTANTS.TOOLS.SELECT) {
+                        if (selectedObjectIndex > -1 && isHittingResizeHandle(x, y, drawingObjects[selectedObjectIndex])) cursor = 'nwse-resize';
+                        else if (getObjectAtPosition(x, y)) cursor = 'move';
+                    } else if (currentTool === CONSTANTS.TOOLS.TEXT) cursor = 'text';
+                    else if ([CONSTANTS.TOOLS.PEN, CONSTANTS.TOOLS.RECT, CONSTANTS.TOOLS.CIRCLE, CONSTANTS.TOOLS.ARROW].includes(currentTool)) cursor = 'crosshair';
+                    else if (currentTool === CONSTANTS.TOOLS.ERASER) cursor = 'cell';
+                    drawingCanvas.style.cursor = cursor;
+                    return;
+                }
+                mouseMoved = true;
+                if (isDragging) {
+                    const dx = x - dragOffsetX; const dy = y - dragOffsetY;
+                    const obj = drawingObjects[selectedObjectIndex];
+                    if (obj.type === CONSTANTS.TOOLS.PEN) obj.points.forEach(p => { p.x += dx; p.y += dy; });
+                    else { obj.x += dx; obj.y += dy; if (obj.endX !== undefined) obj.endX += dx; if (obj.endY !== undefined) obj.endY += dy; }
+                    dragOffsetX = x; dragOffsetY = y;
+                    redrawAllCanvases(ctx);
+                    return;
+                }
+                if (isResizing) {
+                    const obj = drawingObjects[selectedObjectIndex];
+                    const originalBounds = getObjectBounds(originalObjectState);
+                    const dx = x - resizeStartX; const dy = y - resizeStartY;
+                    if (obj.type === CONSTANTS.TOOLS.PEN) {
+                        const scaleX = (originalBounds.w + dx) / (originalBounds.w || 1);
+                        const scaleY = (originalBounds.h + dy) / (originalBounds.h || 1);
+                        obj.points = originalObjectState.points.map(p => ({ x: originalBounds.x + (p.x - originalBounds.x) * scaleX, y: originalBounds.y + (p.y - originalBounds.y) * scaleY }));
+                    } else if (obj.type === CONSTANTS.TOOLS.TEXT) {
+                        obj.size = Math.max(12, originalObjectState.size + (dx + dy) / 2);
+                    } else {
+                        obj.w = originalObjectState.w + dx; obj.h = originalObjectState.h + dy;
+                        if (obj.endX !== undefined) obj.endX = obj.x + obj.w;
+                        if (obj.endY !== undefined) obj.endY = obj.y + obj.h;
+                    }
+                    redrawAllCanvases(ctx);
+                    return;
+                }
+                const currentObject = drawingObjects[drawingObjects.length - 1];
+                if (currentTool === CONSTANTS.TOOLS.PEN) currentObject.points.push({x, y});
+                else if ([CONSTANTS.TOOLS.RECT, CONSTANTS.TOOLS.CIRCLE, CONSTANTS.TOOLS.ARROW].includes(currentTool)) { currentObject.w = x - currentObject.x; currentObject.h = y - currentObject.y; currentObject.endX = x; currentObject.endY = y; }
+                redrawAllCanvases(ctx);
+            });
+
+            window.addEventListener('pointerup', () => {
+                const wasDrawing = isDrawing; // ★ 1. 描画中だったか記憶
+                
+                if (isDrawing || isDragging || isResizing) saveState();
+                isDrawing = false; isDragging = false; isResizing = false;
+
+                // ▼▼▼ ここから追加 ▼▼▼
+                // 2. もし（ドラッグやリサイズではなく）「描画」が終わった瞬間で、
+                if (wasDrawing) {
+                    // 3. ツールが図形（ペン以外）だったら
+                    if (currentTool === CONSTANTS.TOOLS.RECT || 
+                        currentTool === CONSTANTS.TOOLS.CIRCLE || 
+                        currentTool === CONSTANTS.TOOLS.ARROW) 
+                    {
+                        // 4. 選択ツールを自動的にクリックする
+                        const selectBtn = drawingTools.querySelector(`.tool-btn[data-tool="${CONSTANTS.TOOLS.SELECT}"]`);
+                        if (selectBtn) {
+                            selectBtn.click();
+                        }
+                    }
+                }
+                // ▲▲▲ ここまで追加 ▲▲▲
+            });
+
+            drawingCanvas.addEventListener('pointercancel', () => {
+                if (isDrawing) { drawingObjects.pop(); redrawAllCanvases(ctx); }
+                isDrawing = false; isDragging = false; isResizing = false;
+            });
+
+            drawingCanvas.addEventListener('click', (e) => {
+                if (mouseMoved || document.getElementById('text-input-box')) return;
+                const { x, y } = getCanvasCoords(e);
+                
+                if (currentTool === CONSTANTS.TOOLS.TEXT) {
+                    createInputBox(x, y);
+                } else if (currentTool === CONSTANTS.TOOLS.ERASER) {
+                    const hit = getObjectAtPosition(x, y);
+                    if(hit) { 
+                        drawingObjects.splice(hit.index, 1); 
+                        selectedObjectIndex = -1;
+                        saveState(); 
+                        redrawAllCanvases(ctx); 
+                    }
+                }
+            });
+
+            drawingCanvas.addEventListener('dblclick', (e) => {
+                if (currentTool !== CONSTANTS.TOOLS.SELECT) return;
+
+                const { x, y } = getCanvasCoords(e);
+                const hit = getObjectAtPosition(x, y);
+
+                if (hit && hit.object.type === CONSTANTS.TOOLS.TEXT) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const objectToEdit = drawingObjects.splice(hit.index, 1)[0];
+                    selectedObjectIndex = -1;
+                    redrawAllCanvases(ctx);
+                    createInputBox(0, 0, objectToEdit);
+                }
+            });
+
+            colorPicker.addEventListener('change', (e) => { 
+                if (selectedObjectIndex > -1) { drawingObjects[selectedObjectIndex].color = e.target.value; redrawAllCanvases(ctx); saveState(); }
+            });
+            brushSize.addEventListener('input', (e) => {
+                if (selectedObjectIndex > -1) {
+                    const obj = drawingObjects[selectedObjectIndex];
+                    if (obj.type === CONSTANTS.TOOLS.TEXT) obj.size = parseInt(e.target.value) * 2 + 10;
+                    else obj.lineWidth = e.target.value;
+                    redrawAllCanvases(ctx);
+                    saveState();
+                }
+            });
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const existingBox = document.getElementById('text-input-box');
+                    if (existingBox) existingBox.blur();
+                    document.querySelector(`.${CONSTANTS.CSS.TOOL_SELECTED}`)?.classList.remove(CONSTANTS.CSS.TOOL_SELECTED);
+                    const currentButton = e.currentTarget;
+                    currentButton.classList.add(CONSTANTS.CSS.TOOL_SELECTED);
+                    currentTool = currentButton.dataset.tool;
+
+                    const descriptions = { 
+                        [CONSTANTS.TOOLS.SELECT]: 'オブジェクトを選択して移動/リサイズ。テキストはダブルクリックで再編集できます。', 
+                        [CONSTANTS.TOOLS.PEN]: 'ドラッグして自由に線を描画します。', 
+                        [CONSTANTS.TOOLS.TEXT]: 'クリックした位置にテキストを入力します。', 
+                        [CONSTANTS.TOOLS.RECT]: 'ドラッグして四角形を描画します。', 
+                        [CONSTANTS.TOOLS.CIRCLE]: 'ドラッグして円を描画します。', 
+                        [CONSTANTS.TOOLS.ARROW]: 'ドラッグして矢印を描画します。', 
+                        [CONSTANTS.TOOLS.ERASER]: 'クリックしてオブジェクトを削除します。' 
+                    };
+                    toolDescription.textContent = descriptions[currentTool] || '';
+                    selectedObjectIndex = -1;
+                    redrawAllCanvases(ctx);
+                });
+            });
+            clearCanvasBtn.addEventListener('click', () => { 
+                showConfirmModal('キャンバス上のすべての描画をクリアしますか？', () => {
+                    drawingObjects = [];
+                    selectedObjectIndex = -1;
+                    saveState();
+                    redrawAllCanvases(ctx);
+                });
+            });
+
+            videoCaptureBtn.addEventListener('click', () => {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = genericPlayer.videoWidth;
+                tempCanvas.height = genericPlayer.videoHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(genericPlayer, 0, 0, tempCanvas.width, tempCanvas.height);
+                const img = new Image();
+                img.onload = () => {
+                    const aspectRatio = (img.naturalHeight / img.naturalWidth) * 100;
+                    pasteTarget.style.paddingTop = `${aspectRatio}%`;
+                    pastedImage.src = img.src;
+                    pastedImage.classList.remove(CONSTANTS.CSS.HIDDEN);
+                    pastePlaceholder.classList.add(CONSTANTS.CSS.HIDDEN);
+                    if (!isTimecodeSetForCurrentFeedback) captureTimecode();
+                    saveFeedbackBtn.disabled = false;
+                    resizeObserver.observe(pastedImage);
+                    setupCanvas();
+                };
+                img.src = tempCanvas.toDataURL('image/png');
+            });
+
+            // ▼▼▼【ここから差し替え】▼▼▼
+    saveFeedbackBtn.addEventListener('click', async () => {
+        const time = timecodeEl.textContent;
+        const text = feedbackText.value;
+        const feedbackId = editingFeedbackId || Date.now(); // 更新時は既存ID、新規は新しいタイムスタンプ
+        let imageId = null;
+
+        // 再編集用に、描画前の元画像(DataURL)と描画内容を保持
+        const sourceImageSrc = pastedImage.src && !pastedImage.classList.contains(CONSTANTS.CSS.HIDDEN) ? pastedImage.src : null;
+        const currentDrawingObjects = JSON.parse(JSON.stringify(drawingObjects));
+
+        // PDFや一覧表示用に、描画を合成した最終画像を作成
+        if (sourceImageSrc) {
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = pastedImage.naturalWidth;
+            finalCanvas.height = pastedImage.naturalHeight;
+            const finalCtx = finalCanvas.getContext('2d');
+            finalCtx.drawImage(pastedImage, 0, 0);
+            
+            const scaleX = pastedImage.naturalWidth / drawingCanvas.clientWidth;
+            const scaleY = pastedImage.naturalHeight / drawingCanvas.clientHeight;
+            
+            drawingObjects.forEach(item => { 
+                drawShapeWithCtx(finalCtx, item, scaleX, scaleY); 
+            });
+            
+            await new Promise(resolve => {
+                finalCanvas.toBlob(async (blob) => {
+                    if (blob) {
+                        imageId = `img_${feedbackId}`;
+                        // 保存するオブジェクトに作成日時とサイズを追加
+                        const imageRecord = {
+                            id: imageId,
+                            blob: blob,
+                            createdAt: Date.now(),
+                            size: blob.size
+                        };
+                        await idbHelper.set(CONSTANTS.DB.STORE_IMAGES, imageRecord);
+                        
+                        // 保存後にストレージ上限をチェック
+                        await ensureStorageWithinLimit(idbHelper.db);
+                    }
+                    resolve();
+                }, 'image/jpeg', CONSTANTS.IMAGE.JPEG_QUALITY);
+            });
+        }
+        
+        // ★編集モードか新規作成かで処理を分岐
+        if (editingFeedbackId) {
+            // 【更新処理】
+            const feedbackIndex = feedbacks.findIndex(fb => fb.id === editingFeedbackId);
+            if (feedbackIndex > -1) {
+                // 古い画像データがあればDBから削除
+                const oldImageId = feedbacks[feedbackIndex].imageId;
+                if (oldImageId && oldImageId !== imageId) {
+                    await idbHelper.delete(CONSTANTS.DB.STORE_IMAGES, oldImageId).catch(err => console.error("古い画像の削除に失敗", err));
+                }
+
+                // feedbacks配列内のデータを更新
+                feedbacks[feedbackIndex] = {
+                    ...feedbacks[feedbackIndex], // idやrawTimeは維持
+                    time: time,
+                    text: text,
+                    imageId: imageId,
+                    sourceImageSrc: sourceImageSrc,
+                    drawingObjects: currentDrawingObjects
+                };
+                showToast('指示を更新しました！');
+            }
+        } else {
+            // 【新規保存処理】
+            const feedback = { 
+                id: feedbackId, 
+                time: time, 
+                rawTime: getCurrentTime(),
+                text: text, 
+                imageId: imageId,
+                sourceImageSrc: sourceImageSrc,
+                drawingObjects: currentDrawingObjects
+            };
+            feedbacks.push(feedback);
+            showToast('指示を保存しました！');
+        }
+        
+        const rawTimeForMarker = editingFeedbackId ? feedbacks.find(fb => fb.id === editingFeedbackId).rawTime : getCurrentTime();
+        const markerIndex = markers.findIndex(marker => Math.abs(marker.rawTime - rawTimeForMarker) < CONSTANTS.PLAYER.MARKER_JUMP_TOLERANCE);
+        
+        if (markerIndex > -1) {
+            markers.splice(markerIndex, 1);
+            renderMarkers();
+        }
+
+        await saveLastState();
+        await renderFeedbacks();
+        resetFeedbackForm(); // フォームをリセット
+    });
+    // ▲▲▲【ここまで差し替え】▲▲▲
+            async function renderFeedbacks() {
+                const hasFeedbacks = feedbacks.length > 0;
+                noFeedbackMsg.classList.toggle(CONSTANTS.CSS.HIDDEN, hasFeedbacks);
+                exportPdfBtn.disabled = !hasFeedbacks;
+                document.getElementById('copy-for-email-btn').disabled = !hasFeedbacks;
+                clearFeedbacksBtn.disabled = !hasFeedbacks;
+
+                const feedbacksWithImages = feedbacks.filter(fb => fb.imageId);
+                const count = feedbacksWithImages.length;
+                const buttonTextSpan = downloadJpegBtn.querySelector('span'); // ボタンのテキスト(span)要素を取得
+
+                if (buttonTextSpan) { // <span>が万が一なくてもエラーを防ぐ
+                    if (count === 0) {
+                        downloadJpegBtn.disabled = true;
+                        buttonTextSpan.textContent = 'キャプチャ画像のみDL';
+                    } else if (count === 1) {
+                        downloadJpegBtn.disabled = false;
+                        buttonTextSpan.textContent = 'キャプチャ画像(1枚)をDL';
+                    } else {
+                        downloadJpegBtn.disabled = false;
+                        buttonTextSpan.textContent = `全画像(${count}枚)をZIPでDL`;
+                    }
+                }
+                feedbackList.innerHTML = '';
+                if (!hasFeedbacks) {
+                    feedbackList.appendChild(noFeedbackMsg);
+                    updateAllClearButtonState();
+                    updateSaveSessionButtonState(); // セッション保存ボタンの状態も更新
+                    return;
+                }
+
+                const sortedFeedbacks = [...feedbacks].sort((a, b) => a.time.localeCompare(b.time));
+                
+                for (const fb of sortedFeedbacks) {
+                    const div = document.createElement('div');
+                    div.className = `feedback-item bg-gray-100 p-4 rounded-lg`;
+                    div.dataset.id = fb.id;
+
+                    let imageSrc = null;
+                    if (fb.imageId) {
+                        try {
+                            const imageRecord = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+                            if (imageRecord && imageRecord.blob) {
+                                imageSrc = URL.createObjectURL(imageRecord.blob);
+                            }
+                        } catch (e) {
+                            console.error(`Failed to load image ${fb.imageId} from IndexedDB`, e);
+                        }
+                    }
+                    
+                    const textP = document.createElement('p');
+                    textP.className = 'text-sm whitespace-pre-wrap';
+                    textP.textContent = fb.text || '(コメントなし)';
+                    
+                    let imgElement = null;
+                    if (imageSrc) {
+                        imgElement = document.createElement('img');
+                        imgElement.src = imageSrc;
+                        imgElement.alt = 'フィードバック画像';
+                        imgElement.className = 'mt-2 rounded-md border';
+                        imgElement.onload = () => { URL.revokeObjectURL(imgElement.src); };
+                    }
+
+                    const headerDiv = document.createElement('div');
+                    headerDiv.className = 'flex justify-between items-start mb-2';
+                    
+                    const timeButton = document.createElement('button');
+                    timeButton.className = 'font-bold text-blue-600 hover:underline';
+                    timeButton.textContent = `Time: ${fb.time}`;
+                    timeButton.dataset.action = 'jump-to-timecode';
+                    
+                    let seconds = (typeof fb.rawTime === 'number')
+                        ? fb.rawTime
+                        : parseTimeToSeconds(fb.time) + parseTimeToSeconds(prerollInput.value);
+
+                    timeButton.dataset.seconds = Math.max(0, seconds);
+                    timeButton.title = `${fb.time}の再生位置に移動します`;
+                    headerDiv.appendChild(timeButton);
+
+                    const buttonDiv = document.createElement('div');
+                    buttonDiv.innerHTML = `<button class="text-gray-500 hover:text-blue-500 p-1" data-action="edit" title="編集"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button><button class="text-gray-500 hover:text-red-500 p-1" data-action="delete" title="削除">&times;</button>`;
+                    headerDiv.appendChild(buttonDiv);
+
+                    div.appendChild(headerDiv);
+                    div.appendChild(textP);
+                    if (imgElement) div.appendChild(imgElement);
+                    feedbackList.appendChild(div);
+                }
+                updateAllClearButtonState();
+                updateSaveSessionButtonState();
+            }
+            
+            // ▼▼▼【ここから差し替え】▼▼▼
+    feedbackList.addEventListener('click', (e) => {
+        const target = e.target.closest('button');
+        if (!target) return;
+
+        const action = target.dataset.action;
+        const card = target.closest('[data-id]');
+        const id = parseInt(card.dataset.id, 10);
+        
+        if (action === 'jump-to-timecode') {
+            const seconds = Math.max(0, parseFloat(target.dataset.seconds));
+            if (!isNaN(seconds)) {
+                jumpToTime(seconds);
+            }
+        } else if (action === 'delete') {
+            const feedbackIndex = feedbacks.findIndex(fb => fb.id === id);
+            showConfirmModal('このフィードバックを削除しますか？', async () => {
+                const feedbackToDelete = feedbacks[feedbackIndex];
+                if (feedbackToDelete && feedbackToDelete.imageId) {
+                    await idbHelper.delete(CONSTANTS.DB.STORE_IMAGES, feedbackToDelete.imageId).catch(err => console.error("Failed to delete image from DB", err));
+                }
+                feedbacks.splice(feedbackIndex, 1);
+                await saveLastState();
+                await renderFeedbacks();
+                showToast('フィードバックを削除しました。');
+            });
+        } else if (action === 'edit') {
+            const feedbackToEdit = feedbacks.find(fb => fb.id === id);
+            if (!feedbackToEdit) return;
+
+            // 0. フォームを一度リセット
+            resetFeedbackForm();
+
+            // 1. 編集モードに設定
+            editingFeedbackId = id;
+
+            highlightFeedbackItem(id); // ★ハイライトを実行
+            
+            // 2. テキストとタイムコードをフォームに復元
+            timecodeEl.textContent = feedbackToEdit.time;
+            feedbackText.value = feedbackToEdit.text;
+            isTimecodeSetForCurrentFeedback = true;
+
+            // 3. 画像と描画データがあれば復元
+            if (feedbackToEdit.sourceImageSrc) {
+                pastedImage.src = feedbackToEdit.sourceImageSrc;
+                
+                // 画像が読み込まれてからCanvasのセットアップを行う
+                pastedImage.onload = () => {
+                    const finalAspectRatio = (pastedImage.naturalHeight / pastedImage.naturalWidth) * 100;
+                    pasteTarget.style.paddingTop = `${finalAspectRatio}%`;
+                    resizeObserver.observe(pastedImage);
+                    
+                    setupCanvas(); // Canvasのサイズなどを設定
+                    
+                    // 描画オブジェクトを復元して再描画
+                    drawingObjects = JSON.parse(JSON.stringify(feedbackToEdit.drawingObjects || []));
+                    redrawAllCanvases(ctx);
+                    saveState(); // 復元した状態をUndo/Redoの起点にする
+                    pastedImage.onload = null;
+                };
+                
+                pastedImage.classList.remove(CONSTANTS.CSS.HIDDEN);
+                pastePlaceholder.classList.add(CONSTANTS.CSS.HIDDEN);
+            }
+
+            // 4. ボタンのテキストと状態を変更
+            saveFeedbackBtn.textContent = '指示を更新';
+            saveFeedbackBtn.disabled = false;
+
+            // 5. ユーザーが分かりやすいように編集フォームへスクロール
+            document.getElementById('feedback-form-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+    // ▲▲▲【ここまで差し替え】▲▲▲
+
+            // --- Marker Functions ---
+            async function addMarker() {
+                let currentTime = 0;
+                if (currentVideoSource.type === CONSTANTS.SOURCE_TYPE.YOUTUBE && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+                    currentTime = ytPlayer.getCurrentTime();
+                } else if ([CONSTANTS.SOURCE_TYPE.LOCAL, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE].includes(currentVideoSource.type)) {
+                    currentTime = genericPlayer.currentTime;
+                }
+
+                const formattedTime = formatTime(currentTime);
+
+                if (!markers.some(marker => marker.rawTime === currentTime)) {
+                    markers.push({ id: Date.now(), rawTime: currentTime });
+                    renderMarkers();
+                    await saveLastState();
+                    showToast(`マーカーを追加しました: ${formattedTime}`);
+                }
+            }
+
+            function renderMarkers() {
+                const hasMarkers = markers.length > 0;
+                noMarkerMsg.classList.toggle(CONSTANTS.CSS.HIDDEN, !hasMarkers);
+                clearMarkersBtn.disabled = !hasMarkers;
+                markerList.innerHTML = '';
+                if (!hasMarkers) {
+                    markerList.appendChild(noMarkerMsg);
+                    updateAllClearButtonState();
+                    updateSaveSessionButtonState();
+                    return;
+                }
+                [...markers].sort((a, b) => a.rawTime - b.rawTime).forEach(marker => {
+                    const div = document.createElement('div');
+                    div.className = 'flex justify-between items-center bg-yellow-100 p-2 rounded-md';
+                    div.dataset.markerId = marker.id;
+                    const formattedTime = formatTime(marker.rawTime);
+                    div.innerHTML = `
+                        <button class="font-mono text-blue-600 hover:underline" data-action="jump-to-marker" data-raw-time="${marker.rawTime}">${formattedTime}</button>
+                        <button class="text-gray-500 hover:text-red-500 p-1" data-action="delete-marker" title="マーカーを削除">&times;</button>
+                    `;
+                    markerList.appendChild(div);
+                });
+                updateAllClearButtonState();
+                updateMarkerJumpButtonsState();
+                updateSaveSessionButtonState();
+            }
+
+            markerList.addEventListener('click', (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+
+                const action = target.dataset.action;
+                
+                if (action === 'jump-to-marker') {
+                    const rawSeconds = parseFloat(target.dataset.rawTime);
+                    jumpToTime(rawSeconds);
+                } else if (action === 'delete-marker') {
+                    const card = target.closest('[data-marker-id]');
+                    const id = parseInt(card.dataset.markerId, 10);
+                    showConfirmModal('このマーカーを削除しますか？', async () => {
+                        markers = markers.filter(m => m.id !== id);
+                        renderMarkers();
+                        await saveLastState();
+                    });
+                }
+            });
+
+            function jumpToTime(seconds) {
+                if (currentVideoSource.type === CONSTANTS.SOURCE_TYPE.YOUTUBE && ytPlayer) {
+                    ytPlayer.seekTo(seconds, true);
+                    ytPlayer.pauseVideo();
+                } else {
+                    genericPlayer.currentTime = seconds;
+                    genericPlayer.pause();
+                }
+
+                const prerollSeconds = parseTimeToSeconds(prerollInput.value);
+                const finalTimeSeconds = Math.max(0, seconds - prerollSeconds);
+                timecodeEl.textContent = formatTime(finalTimeSeconds);
+                
+                isTimecodeSetForCurrentFeedback = true;
+                updateMarkerJumpButtonsState();
+            }
+
+            function getCurrentTime() {
+                if (currentVideoSource.type === CONSTANTS.SOURCE_TYPE.YOUTUBE && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+                    return ytPlayer.getCurrentTime();
+                } else if ([CONSTANTS.SOURCE_TYPE.LOCAL, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE].includes(currentVideoSource.type)) {
+                    return genericPlayer.currentTime;
+                }
+                return 0;
+            }
+
+            function updateMarkerJumpButtonsState() {
+                const currentTime = getCurrentTime();
+                const sortedMarkers = markers.map(m => m.rawTime).sort((a, b) => a - b);
+                
+                let prevMarkerTime = null;
+                for (let i = sortedMarkers.length - 1; i >= 0; i--) {
+                    if (sortedMarkers[i] < currentTime - CONSTANTS.PLAYER.MARKER_JUMP_TOLERANCE) {
+                        prevMarkerTime = sortedMarkers[i];
+                        break;
+                    }
+                }
+
+                let nextMarkerTime = null;
+                for (let i = 0; i < sortedMarkers.length; i++) {
+                    if (sortedMarkers[i] > currentTime + CONSTANTS.PLAYER.MARKER_JUMP_TOLERANCE) {
+                        nextMarkerTime = sortedMarkers[i];
+                        break;
+                    }
+                }
+
+                prevMarkerBtn.disabled = prevMarkerTime === null;
+                nextMarkerBtn.disabled = nextMarkerTime === null;
+                fsPrevMarkerBtn.disabled = prevMarkerTime === null;
+                fsNextMarkerBtn.disabled = nextMarkerTime === null;
+
+                const handlePrevClick = (e) => { e.stopPropagation(); if(prevMarkerTime !== null) jumpToTime(prevMarkerTime); };
+                const handleNextClick = (e) => { e.stopPropagation(); if(nextMarkerTime !== null) jumpToTime(nextMarkerTime); };
+
+                prevMarkerBtn.onclick = handlePrevClick;
+                nextMarkerBtn.onclick = handleNextClick;
+                fsPrevMarkerBtn.onclick = handlePrevClick;
+                fsNextMarkerBtn.onclick = handleNextClick;
+            }
+
+            genericPlayer.addEventListener('timeupdate', updateMarkerJumpButtonsState);
+            
+            function seekVideo(seconds) {
+                if (currentVideoSource.type === CONSTANTS.SOURCE_TYPE.YOUTUBE && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+                    const currentTime = ytPlayer.getCurrentTime();
+                    ytPlayer.seekTo(currentTime + seconds, true);
+                } else if ([CONSTANTS.SOURCE_TYPE.LOCAL, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE].includes(currentVideoSource.type)) {
+                    genericPlayer.currentTime += seconds;
+                }
+            }
+            
+            const handleSeek = (seconds, event) => {
+                if (event) event.stopPropagation();
+                seekVideo(seconds);
+            };
+
+            rewindBtn.addEventListener('click', (e) => handleSeek(-CONSTANTS.PLAYER.SEEK_SECONDS, e));
+            ffBtn.addEventListener('click', (e) => handleSeek(CONSTANTS.PLAYER.SEEK_SECONDS, e));
+            fsRewindBtn.addEventListener('click', (e) => handleSeek(-CONSTANTS.PLAYER.SEEK_SECONDS, e));
+            fsFfBtn.addEventListener('click', (e) => handleSeek(CONSTANTS.PLAYER.SEEK_SECONDS, e));
+
+            function updateAllClearButtonState() {
+                const hasData = markers.length > 0 || feedbacks.length > 0;
+                allClearBtn.disabled = !hasData;
+            }
+
+            allClearBtn.addEventListener('click', () => {
+                showConfirmModal('すべてのデータ（動画履歴、マーカー、指示、保存した作業）を削除し、アプリを初期状態に戻しますか？', async () => {
+                    try {
+                        await idbHelper.clear(CONSTANTS.DB.STORE_APP_STATE);
+                        await idbHelper.clear(CONSTANTS.DB.STORE_IMAGES);
+                        await idbHelper.clear(CONSTANTS.DB.STORE_SESSIONS);
+                        showToast('すべてのデータをクリアしました。ページをリロードします。');
+                        setTimeout(() => location.reload(), 1500);
+                    } catch (e) {
+                        console.error("Failed to clear IndexedDB", e);
+                        showToast('データのクリアに失敗しました。', true);
+                    }
+                });
+            });
+
+            clearMarkersBtn.addEventListener('click', () => {
+                if (markers.length > 0) {
+                    showConfirmModal('マーカー一覧をクリアしますか？', async () => {
+                        markers = [];
+                        renderMarkers();
+                        await saveLastState();
+                        showToast('マーカーをクリアしました。');
+                    });
+                }
+            });
+
+            clearFeedbacksBtn.addEventListener('click', () => {
+                if (feedbacks.length > 0) {
+                    showConfirmModal('指示一覧をクリアしますか？（関連する画像も削除されます）', async () => {
+                        try {
+                            for (const fb of feedbacks) {
+                                if (fb.imageId) {
+                                    await idbHelper.delete(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+                                }
+                            }
+                            feedbacks = [];
+                            await renderFeedbacks();
+                            await saveLastState();
+                            showToast('指示一覧をクリアしました。');
+                        } catch (e) {
+                            console.error("Failed to clear feedbacks", e);
+                            showToast('指示のクリアに失敗しました。', true);
+                        }
+                    });
+                }
+            });
+
+            let confirmOkCallback = null;
+            let confirmContinueCallback = null;
+
+            function showConfirmModal(message, onOk, onContinue, options = {}) {
+                // デフォルトのボタンテキストを設定
+                const {
+                    okText = 'クリアします',
+                    continueText = 'クリアせずに続行',
+                    cancelText = 'キャンセル'
+                } = options;
+
+                confirmModalTitle.innerHTML = message;
+                confirmOkCallback = onOk;
+                confirmContinueCallback = onContinue;
+
+                // 毎回ボタンのテキストを正しく設定し直す
+                confirmModalOkBtn.textContent = okText;
+                confirmModalContinueBtn.textContent = continueText;
+                confirmModalCancelBtn.textContent = cancelText;
+
+                if (onContinue) {
+                    confirmModalContinueBtn.classList.remove(CONSTANTS.CSS.HIDDEN);
+                } else {
+                    confirmModalContinueBtn.classList.add(CONSTANTS.CSS.HIDDEN);
+                }
+
+                confirmModal.classList.remove(CONSTANTS.CSS.HIDDEN);
+            }
+
+            function hideConfirmModal() {
+                confirmModal.classList.add(CONSTANTS.CSS.HIDDEN);
+                confirmOkCallback = null;
+                confirmContinueCallback = null;
+            }
+
+            confirmModalOkBtn.addEventListener('click', () => {
+                if (typeof confirmOkCallback === 'function') {
+                    confirmOkCallback();
+                }
+                hideConfirmModal();
+            });
+            
+            confirmModalContinueBtn.addEventListener('click', () => {
+                if (typeof confirmContinueCallback === 'function') {
+                    confirmContinueCallback();
+                }
+                hideConfirmModal();
+            });
+
+            confirmModalCancelBtn.addEventListener('click', hideConfirmModal);
+            confirmModal.addEventListener('click', (e) => {
+                if (e.target === confirmModal) {
+                    hideConfirmModal();
+                }
+            });
+
+            function showHelpModal(id) {
+                const data = helpData[id];
+                if (data) {
+                    helpModalTitle.textContent = data.title;
+                    helpModalContentText.innerHTML = data.content.replace(/\n/g, '<br>');
+                    helpModal.classList.remove(CONSTANTS.CSS.HIDDEN);
+                }
+            }
+
+            function hideHelpModal() {
+                helpModal.classList.add(CONSTANTS.CSS.HIDDEN);
+            }
+
+            document.addEventListener('click', (e) => {
+                const helpBtn = e.target.closest('.help-btn');
+                if (helpBtn) {
+                    const helpId = helpBtn.dataset.helpId;
+                    showHelpModal(helpId);
+                }
+            });
+
+            closeHelpModalBtn.addEventListener('click', hideHelpModal);
+            helpModal.addEventListener('click', (e) => {
+                if (e.target === helpModal) {
+                    hideHelpModal();
+                }
+            });
+
+            function showToast(message, isError = false) {
+                toastMessage.textContent = message;
+                toast.className = `fixed bottom-5 right-5 text-white py-3 px-6 rounded-lg shadow-xl opacity-0 transform translate-y-5 ${isError ? 'bg-red-600' : 'bg-green-600'}`;
+                toast.classList.remove('opacity-0', 'translate-y-5');
+                toast.classList.add('opacity-100', 'translate-y-0');
+                setTimeout(() => {
+                    toast.classList.remove('opacity-100', 'translate-y-0');
+                    toast.classList.add('opacity-0', 'translate-y-5');
+                }, 3000);
+            }
+
+            // ▼▼▼ ここから変更 ▼▼▼
+            /**
+             * BlobオブジェクトをData URLに変換するヘルパー関数
+             * @param {Blob} blob - 変換したいBlobオブジェクト
+             * @returns {Promise<string>} - Data URL形式の文字列を返すPromise
+             */
+            function blobToDataURL(blob) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+
+            /**
+             * 指示一覧を画像付きのHTMLとしてクリップボードにコピーする関数
+             */
+            async function copyForEmail() {
+                // 処理中であることをユーザーに示す
+                loadingOverlay.classList.remove(CONSTANTS.CSS.HIDDEN);
+                loadingMessage.textContent = 'コピー準備中...';
+
+                try {
+                    // PDF生成時と同様に、タイムコード順でソートする
+                    const sortedFeedbacks = [...feedbacks].sort((a, b) => a.time.localeCompare(b.time));
+                    
+                    // 各指示をHTMLの断片に変換していく
+                    const htmlParts = [];
+                    for (const fb of sortedFeedbacks) {
+                        let imageHtml = '';
+                        // 画像IDがあれば、IndexedDBから画像データを取得してData URLに変換
+                        if (fb.imageId) {
+                            try {
+                                const imageRecord = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+                                if (imageRecord && imageRecord.blob) {
+                                    const dataUrl = await blobToDataURL(imageRecord.blob);
+                                    // 画像をHTMLのimgタグとして埋め込む。横幅を最大500px程度に制限
+                                    imageHtml = `<img src="${dataUrl}" alt="指示画像" style="max-width: 500px; height: auto; border: 1px solid #ccc; margin-top: 8px;">`;
+                                }
+                            } catch (e) {
+                                console.error(`画像 ${fb.imageId} の読み込みに失敗しました`, e);
+                            }
+                        }
+
+                        // 指示テキストの改行を <br> タグに変換
+                        const escapedText = (fb.text || '(コメントなし)')
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;")
+                            .replace(/\n/g, "<br>");
+
+                        // メールの書式で使いやすいようにテーブル形式でHTMLを組む
+                        htmlParts.push(`
+                            <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eeeeee;">
+                                <p style="font-size: 16px; font-weight: bold; margin: 0 0 8px 0;">
+                                    Time: ${fb.time}
+                                </p>
+                                <div style="font-size: 14px; line-height: 1.6;">
+                                    ${escapedText}
+                                </div>
+                                ${imageHtml}
+                            </div>
+                        `);
+                    }
+
+                    const finalHtml = `<div style="font-family: Arial, sans-serif; color: #333;">${htmlParts.join('')}</div>`;
+
+                    // Clipboard APIを使ってHTMLをコピーする
+                    const blob = new Blob([finalHtml], { type: 'text/html' });
+                    const clipboardItem = new ClipboardItem({ 'text/html': blob });
+                    await navigator.clipboard.write([clipboardItem]);
+
+                    showToast('コピーしました。メールの本文に貼り付けてください。');
+
+                } catch (err) {
+                    console.error('クリップボードへのコピーに失敗しました:', err);
+                    showToast('コピーに失敗しました。ブラウザが対応していない可能性があります。', true);
+                } finally {
+                    // 処理が終わったら、ローディング表示を消す
+                    loadingOverlay.classList.add(CONSTANTS.CSS.HIDDEN);
+                }
+            }
+            // ▲▲▲ ここまで変更 ▲▲▲
+            
+            /**
+             * JSZipライブラリが読み込まれるまで最大2秒間待機する
+             * @returns {Promise<boolean>} 読み込み完了したらtrue、タイムアウトしたらfalse
+             */
+            async function waitForJSZip() {
+              for (let i = 0; i < 20; i++) { // 最大2秒程度待機 (100ms * 20)
+                if (typeof JSZip !== 'undefined') return true;
+                await new Promise(r => setTimeout(r, 100));
+              }
+              return false;
+            }
+
+            /**
+             * ダウンロードボタンのクリックイベントを処理するハンドラ
+             * 画像の枚数に応じて「単一DL」か「ZIP一括DL」かを自動で振り分ける
+             */
+            async function handleImageDownloadClick() {
+                const feedbacksWithImages = feedbacks.filter(fb => fb.imageId);
+                const count = feedbacksWithImages.length;
+
+                if (count === 1) {
+                    await downloadImagesIndividually(feedbacksWithImages);
+                } else if (count > 1) {
+                    await downloadImagesAsZip(feedbacksWithImages);
+                }
+            }
+
+            /**
+             * 単一の画像を直接ダウンロードする
+             * @param {Array} feedbacksWithImages - imageIdを持つフィードバック（1件のみ）
+             */
+            async function downloadImagesIndividually(feedbacksWithImages) {
+                loadingOverlay.classList.remove(CONSTANTS.CSS.HIDDEN);
+                loadingMessage.textContent = '画像を準備中...';
+                downloadJpegBtn.disabled = true; // ボタンを一時的に無効化
+                
+                try {
+                    const fb = feedbacksWithImages[0];
+                    const imageRecord = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+
+                    // DBからBlobが取得できないケースを考慮
+                    if (!imageRecord?.blob) {
+                        throw new Error(`画像 (ID: ${fb.imageId}) のデータが見つかりません。`);
+                    }
+
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(imageRecord.blob);
+                    link.href = url;
+                    
+                    // ファイル名のUndefined防止
+                    const baseName = fb.time ? `Time_${fb.time.replace(/:/g, '-')}` : `Capture_${fb.imageId}`;
+                    link.download = `${baseName}.jpeg`;
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    
+                    showToast('キャプチャ画像 1枚をダウンロードしました。');
+
+                } catch (err) {
+                    console.error('単一画像のダウンロードに失敗しました:', err);
+                    showToast(err.message || '画像のダウンロードに失敗しました。', true);
+                } finally {
+                    loadingOverlay.classList.add(CONSTANTS.CSS.HIDDEN);
+                    downloadJpegBtn.disabled = false; // ボタンを再度有効化
+                }
+            }
+
+            /**
+             * 複数のキャプチャ画像をZIPファイルとして一括ダウンロードする
+             * @param {Array} feedbacksWithImages - imageIdを持つフィードバック（複数件）
+             */
+            async function downloadImagesAsZip(feedbacksWithImages) {
+                // JSZipの読み込みを待機
+                if (!(await waitForJSZip())) {
+                    showToast('ZIP化ライブラリの読み込みに失敗しました。ページを再読み込みしてください。', true);
+                    return;
+                }
+
+                loadingOverlay.classList.remove(CONSTANTS.CSS.HIDDEN);
+                loadingMessage.textContent = 'ZIPファイルを準備中...';
+                downloadJpegBtn.disabled = true; // ボタンを一時的に無効化
+
+                try {
+                    // ZIP生成前にストレージの健全性をチェック
+                    await ensureStorageWithinLimit(idbHelper.db);
+
+                    const zip = new JSZip();
+                    const nameCounts = {}; // ファイル名の重複回避用
+
+                    for (let i = 0; i < feedbacksWithImages.length; i++) {
+                        const fb = feedbacksWithImages[i];
+                        
+                        // 処理中の進捗をリアルタイム表示
+                        loadingMessage.textContent = `画像 ${i + 1}/${feedbacksWithImages.length} をZIP化中...`;
+
+                        const imageRecord = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+
+                        // DBからBlobが取得できないケースを考慮
+                        if (!imageRecord?.blob) {
+                            console.warn(`画像 (ID: ${fb.imageId}) のデータが見つからないためスキップします。`);
+                            continue;
+                        }
+
+                        // ファイル名のUndefined防止
+                        let baseName = fb.time ? `Time_${fb.time.replace(/:/g, '-')}` : `Capture_${fb.imageId}`;
+                        
+                        if (nameCounts[baseName]) {
+                            nameCounts[baseName]++;
+                            baseName = `${baseName}_(${nameCounts[baseName]})`;
+                        } else {
+                            nameCounts[baseName] = 1;
+                        }
+                        const fileName = `${baseName}.jpeg`;
+                        
+                        // ZIPに画像データを追加
+                        zip.file(fileName, imageRecord.blob);
+                    }
+
+                    loadingMessage.textContent = 'ZIPファイルを生成中...';
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+                    // ダウンロード処理
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(zipBlob);
+                    link.href = url;
+                    const videoName = currentVideoSource.name ? currentVideoSource.name.split('.').slice(0, -1).join('.') : 'V-checker_Images';
+                    link.download = `${videoName}_Captures.zip`;
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+
+                    // 詳細な完了トーストを表示
+                    showToast(`キャプチャ画像 ${feedbacksWithImages.length}枚をZIP化しました (${(zipBlob.size/1024/1024).toFixed(1)}MB)。`);
+
+                } catch (err) {
+                    console.error('ZIPファイルの生成に失敗しました:', err);
+                    showToast('ZIPファイルの生成に失敗しました。', true);
+                } finally {
+                    loadingOverlay.classList.add(CONSTANTS.CSS.HIDDEN);
+                    downloadJpegBtn.disabled = false; // ボタンを再度有効化
+                }
+            }
+            
+            async function generateReport(imageSize = CONSTANTS.PDF.IMAGE_SIZE_MEDIUM, orientation = CONSTANTS.PDF.ORIENTATION_PORTRAIT) {
+                let imageMaxWidth;
+                switch (imageSize) {
+                    case CONSTANTS.PDF.IMAGE_SIZE_LARGE:
+                        imageMaxWidth = '90%';
+                        break;
+                    case CONSTANTS.PDF.IMAGE_SIZE_SMALL:
+                        imageMaxWidth = '240px';
+                        break;
+                    case CONSTANTS.PDF.IMAGE_SIZE_MEDIUM:
+                    default:
+                        imageMaxWidth = '480px';
+                        break;
+                }
+
+                let htmlContent = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>フィードバックレポート</title><style>body{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Meiryo',sans-serif;margin:2em;color:#333}@page{size:${orientation}} .feedback{display:flex;gap:1.5em;align-items:flex-start;border-bottom:1px solid #eee;padding:1.5em 0;page-break-inside:avoid}.feedback:first-of-type{border-top:1px solid #eee}.meta{flex:0 0 120px;font-weight:bold;font-size:1.1em}.content{flex:1}p{white-space:pre-wrap;word-break:break-word;margin:0 0 1em 0}img{max-width:${imageMaxWidth};height:auto;border:1px solid #ddd;border-radius:4px}#print-btn{position:fixed;top:10px;right:10px;padding:10px 20px;background:#007bff;color:white;border:none;border-radius:5px;cursor:pointer}@media print{#print-btn{display:none}}</style></head><body><button id="print-btn" onclick="window.print()">このページをPDFとして出力</button>`;
+                
+                const sortedFeedbacks = [...feedbacks].sort((a,b) => a.time.localeCompare(b.time));
+                
+                for (const fb of sortedFeedbacks) {
+                    let imageHtml = '';
+                    if (fb.imageId) {
+                        try {
+                            const imageRecord = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+                            if (imageRecord && imageRecord.blob) {
+                                const dataUrl = await new Promise(resolve => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => resolve(reader.result);
+                                    reader.readAsDataURL(imageRecord.blob);
+                                });
+                                imageHtml = `<img src="${dataUrl}">`;
+                            }
+                        } catch (e) {
+                            console.error(`Failed to load image ${fb.imageId} for report`, e);
+                        }
+                    }
+                    const escapedText = (fb.text || '(コメントなし)').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+                    htmlContent += `<div class="feedback"><div class="meta"><span>Time:</span><br><span>${fb.time}</span></div><div class="content"><p>${escapedText}</p>${imageHtml}</div></div>`;
+                }
+                htmlContent += '</body></html>';
+                
+                // 差し替えた部分
+                openHtmlInNewTab(htmlContent, 'report.html');
+                showToast('レポートが生成されました。');
+            }
+
+            async function generateGridReport() {
+                const css = `
+                    <style>
+                        @page { size: A4 portrait; margin: 0; }
+                        body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; margin: 0; color: #333; }
+                        .page-wrapper { box-sizing: border-box; padding: 1cm; page-break-after: always; height: 29.7cm; display: flex; flex-direction: column; }
+                        .page-wrapper:last-child { page-break-after: auto; }
+                        .grid-container { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 1em; flex-grow: 1; height: 100%; }
+                        .grid-item { border: 1px solid #ccc; padding: 0.5em; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; page-break-inside: avoid !important; }
+                        .grid-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4em; font-size: 0.8em; flex-shrink: 0; }
+                        .item-number { font-weight: bold; background-color: #3b82f6; color: white; width: 1.5em; height: 1.5em; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; line-height: 1; font-size: 0.8em; }
+                        .item-timecode { font-weight: bold; font-size: 0.8em; }
+                        .grid-item-content { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
+                        .grid-item-content p { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 0.75em; line-height: 1.4; flex-shrink: 0; }
+                        .image-container { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; margin-top: 0.4em; }
+                        .image-container img { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid #ddd; border-radius: 4px; }
+                        #print-controls { position: fixed; top: 0; left: 0; width: 100%; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
+                        #print-instruction { background-color: #fffbe6; color: #92400e; padding: 0.5em 1em; border-radius: 8px; font-size: 0.9em; font-weight: bold; }
+                        #print-btn { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+                        @media print { #print-controls { display: none; } body { margin: 0; } }
+                    </style>
+                `;
+
+                let htmlContent = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>フィードバックレポート (6分割)</title>${css}</head><body>
+                    <div id="print-controls">
+                        <div id="print-instruction">💡 きれいに印刷するには、印刷設定で「余白」を「なし」に設定してください。</div>
+                        <button id="print-btn" onclick="window.print()">このページをPDFとして出力</button>
+                    </div>
+                `;
+
+                const sortedFeedbacks = [...feedbacks].sort((a, b) => a.time.localeCompare(b.time));
+                let feedbackCounter = 0;
+                let pageContent = '';
+
+                for (let i = 0; i < sortedFeedbacks.length; i++) {
+                    const fb = sortedFeedbacks[i];
+                    feedbackCounter++;
+
+                    let imageHtml = '';
+                    if (fb.imageId) {
+                        try {
+                            const imageRecord = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+                            if (imageRecord && imageRecord.blob) {
+                                const dataUrl = await new Promise(resolve => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => resolve(reader.result);
+                                    reader.readAsDataURL(imageRecord.blob);
+                                });
+                                imageHtml = `<div class="image-container"><img src="${dataUrl}"></div>`;
+                            }
+                        } catch (e) { console.error(`Failed to load image ${fb.imageId} for report`, e); }
+                    } else {
+                        imageHtml = `<div class="image-container"></div>`;
+                    }
+
+                    const escapedText = (fb.text || '(コメントなし)').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+                    
+                    pageContent += `
+                        <div class="grid-item">
+                            <div class="grid-item-header">
+                                <span class="item-number">${feedbackCounter}</span>
+                                <span class="item-timecode">Time: ${fb.time}</span>
+                            </div>
+                            <div class="grid-item-content">
+                                <p>${escapedText}</p>
+                                ${imageHtml}
+                            </div>
+                        </div>
+                    `;
+
+                    if (feedbackCounter % 6 === 0 || i === sortedFeedbacks.length - 1) {
+                        htmlContent += `<div class="page-wrapper"><div class="grid-container">${pageContent}</div></div>`;
+                        pageContent = '';
+                    }
+                }
+
+                htmlContent += '</body></html>';
+
+                // 差し替えた部分
+                openHtmlInNewTab(htmlContent, 'report_grid.html');
+                showToast('6分割レポートが生成されました。');
+            }
+
+            exportPdfBtn.addEventListener('click', () => {
+                imageSizeModal.classList.remove(CONSTANTS.CSS.HIDDEN);
+            });
+
+            imageSizeModal.addEventListener('click', async (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+
+                if (target.id === 'image-size-modal-cancel-btn') {
+                    imageSizeModal.classList.add(CONSTANTS.CSS.HIDDEN);
+                    return;
+                }
+
+                const size = target.dataset.size;
+                if (size) {
+                    if (size === CONSTANTS.PDF.GRID) {
+                        await generateGridReport();
+                    } else {
+                        const orientation = size === CONSTANTS.PDF.IMAGE_SIZE_LARGE ? CONSTANTS.PDF.ORIENTATION_LANDSCAPE : CONSTANTS.PDF.ORIENTATION_PORTRAIT;
+                        await generateReport(size, orientation);
+                    }
+                    imageSizeModal.classList.add(CONSTANTS.CSS.HIDDEN);
+                }
+            });
+
+            const dictionaryToggle = document.getElementById('dictionary-toggle');
+            const dictionaryContent = document.getElementById('dictionary-content');
+            const dictionaryToggleIcon = document.getElementById('dictionary-toggle-icon');
+            dictionaryToggle.addEventListener('click', () => { 
+                dictionaryContent.classList.toggle(CONSTANTS.CSS.HIDDEN); 
+                dictionaryToggleIcon.classList.toggle(CONSTANTS.CSS.ROTATE_180); 
+            });
+            const searchInput = document.getElementById('dictionary-search-input');
+            document.getElementById('weblio-btn').addEventListener('click', () => { const word = searchInput.value.trim(); if (word) window.open(`https://www.weblio.jp/content/${encodeURIComponent(word)}`, '_blank'); });
+            document.getElementById('kotobank-btn').addEventListener('click', () => { const word = searchInput.value.trim(); if (word) window.open(`https://kotobank.jp/word/${encodeURIComponent(word)}`, '_blank'); });
+            
+            manualLink.addEventListener('click', (e) => { e.preventDefault(); manualModal.classList.remove(CONSTANTS.CSS.HIDDEN); });
+            closeManualModalBtn.addEventListener('click', () => { manualModal.classList.add(CONSTANTS.CSS.HIDDEN); });
+            manualModal.addEventListener('click', (e) => { if (e.target === manualModal) manualModal.classList.add(CONSTANTS.CSS.HIDDEN); });
+
+            function saveState() {
+                history = history.slice(0, historyIndex + 1);
+                const currentState = JSON.stringify(drawingObjects);
+                history.push(currentState);
+                if (history.length > CONSTANTS.DRAWING.MAX_HISTORY_SIZE) history.shift();
+                historyIndex = history.length - 1;
+                updateHistoryButtons();
+            }
+
+            function restoreState(stateString) {
+                drawingObjects = JSON.parse(stateString);
+                redrawAllCanvases(ctx);
+            }
+
+            function undo() {
+                if (historyIndex > 0) { historyIndex--; restoreState(history[historyIndex]); updateHistoryButtons(); }
+            }
+
+            function redo() {
+                if (historyIndex < history.length - 1) { historyIndex++; restoreState(history[historyIndex]); updateHistoryButtons(); }
+            }
+
+            function updateHistoryButtons() {
+                undoBtn.disabled = historyIndex <= 0;
+                redoBtn.disabled = historyIndex >= history.length - 1;
+            }
+
+            undoBtn.addEventListener('click', undo);
+            redoBtn.addEventListener('click', redo);
+            document.addEventListener('keydown', (e) => {
+                const isCmd = e.ctrlKey || e.metaKey; 
+                const activeEl = document.activeElement;
+                const isTyping = ['INPUT', 'TEXTAREA'].includes(activeEl.tagName);
+
+                if (isCmd && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+                if (isCmd && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+                
+                if (!isTyping && !addMarkerBtn.disabled) {
+                    if(e.key.toLowerCase() === 'm') { e.preventDefault(); addMarker(); }
+                }
+                if (!isTyping && !rewindBtn.disabled) {
+                    if(e.key.toLowerCase() === 'j') { e.preventDefault(); seekVideo(-CONSTANTS.PLAYER.SEEK_SECONDS); }
+                    if(e.key.toLowerCase() === 'l') { e.preventDefault(); seekVideo(CONSTANTS.PLAYER.SEEK_SECONDS); }
+                }
+            });
+            
+            prerollInput.addEventListener('blur', (e) => {
+                const zenkaku = '０１２３４５６７８９：';
+                const hankaku = '0123456789:';
+                let value = e.target.value;
+                for (let i = 0; i < zenkaku.length; i++) {
+                    value = value.replace(new RegExp(zenkaku[i], 'g'), hankaku[i]);
+                }
+                e.target.value = value;
+            });
+
+            function getFullscreenElement() {
+                return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+            }
+
+            function toggleFullscreen() {
+                if (!getFullscreenElement()) {
+                    if (playerWrapper.requestFullscreen) playerWrapper.requestFullscreen();
+                    else if (playerWrapper.webkitRequestFullscreen) playerWrapper.webkitRequestFullscreen();
+                    else if (playerWrapper.msRequestFullscreen) playerWrapper.msRequestFullscreen();
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen();
+                    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                    else if (document.msExitFullscreen) document.msExitFullscreen();
+                }
+            }
+            
+            const handleAddMarker = (e) => {
+                e.stopPropagation();
+                addMarker();
+            };
+            addMarkerBtn.addEventListener('click', handleAddMarker);
+            fsAddMarkerBtn.addEventListener('click', handleAddMarker);
+            
+            customFullscreenBtn.addEventListener('click', toggleFullscreen);
+            fsExitBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleFullscreen();
+            });
+
+            function handleFullscreenChange() {
+                if (getFullscreenElement()) {
+                    playerWrapper.appendChild(toast);
+                    fullscreenControls.classList.remove(CONSTANTS.CSS.HIDDEN);
+                } else {
+                    document.body.appendChild(toast);
+                    fullscreenControls.classList.add(CONSTANTS.CSS.HIDDEN);
+                }
+            }
+
+            document.addEventListener('fullscreenchange', handleFullscreenChange);
+            document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.addEventListener('msfullscreenchange', handleFullscreenChange);
+            
+            
+
+            
+
+            // --- Session Management Functions ---
+
+            function updateSaveSessionButtonState() {
+                const hasContent = currentVideoSource.type !== null && (markers.length > 0 || feedbacks.length > 0);
+                saveSessionBtn.disabled = !hasContent;
+            }
+
+            let inputModalCallback = null;
+            function showInputModal(title, defaultValue, callback) {
+                inputModalTitle.textContent = title;
+                inputModalText.value = defaultValue;
+                inputModalCallback = callback;
+                inputModal.classList.remove(CONSTANTS.CSS.HIDDEN);
+                inputModalText.focus();
+            }
+
+            function hideInputModal() {
+                inputModal.classList.add(CONSTANTS.CSS.HIDDEN);
+                inputModalCallback = null;
+            }
+
+            inputModalOkBtn.addEventListener('click', () => {
+                if (inputModalCallback) {
+                    inputModalCallback(inputModalText.value.trim());
+                }
+            });
+            inputModalCancelBtn.addEventListener('click', hideInputModal);
+
+/**
+             * 現在の作業内容を指定されたIDで保存する（IDがなければ新規保存）
+             * @param {number | null} sessionId - 上書きするセッションのID。nullの場合は新規保存。
+             * @param {string} sessionName - 新規保存の場合のセッション名。
+             */
+            async function saveSession(sessionId, sessionName) {
+                loadingOverlay.classList.remove(CONSTANTS.CSS.HIDDEN);
+                loadingMessage.textContent = 'セッションを保存中...';
+
+                try {
+                    const feedbacksWithImages = [];
+                    for(const fb of feedbacks) {
+                        let imageBlob = null;
+                        if (fb.imageId) {
+                            const record = await idbHelper.get(CONSTANTS.DB.STORE_IMAGES, fb.imageId);
+                            if (record) imageBlob = record.blob;
+                        }
+                        feedbacksWithImages.push({ ...fb, imageBlob });
+                    }
+                    
+                    // 保存するデータを作成
+                    const sessionData = {
+                        name: sessionName,
+                        savedAt: new Date(),
+                        source: currentVideoSource,
+                        markers: markers,
+                        feedbacks: feedbacksWithImages
+                    };
+                    
+                    // sessionIdがあれば、そのIDで更新（上書き）
+                    if (sessionId) {
+                        sessionData.id = sessionId;
+                    }
+
+                    // データベースに保存（新規または上書き）
+                    const savedId = await idbHelper.set(CONSTANTS.DB.STORE_SESSIONS, sessionData);
+                    
+                    // 保存後、現在のセッションIDを更新
+                    currentSessionId = sessionId || savedId;
+
+                    showToast(`セッション「${sessionName}」を保存しました。`);
+
+                } catch (e) {
+                    console.error("セッションの保存に失敗しました:", e);
+                    showToast('セッションの保存に失敗しました。', true);
+                } finally {
+                    loadingOverlay.classList.add(CONSTANTS.CSS.HIDDEN);
+                }
+            }
+            saveSessionBtn.addEventListener('click', async () => {
+                // 新規保存の処理を関数化
+                const doSaveAs = () => {
+                    const defaultName = `${currentVideoSource.name || '無題の動画'} - ${new Date().toLocaleString('ja-JP')}`;
+                    showInputModal('この作業セッションの名前を入力してください', defaultName, (sessionName) => {
+                        if (!sessionName) {
+                            showToast('セッション名を入力してください。', true);
+                            return;
+                        }
+                        hideInputModal();
+                        saveSession(null, sessionName); // 新規保存なのでIDはnull
+                    });
+                };
+                
+                // --- ここからが分岐処理 ---
+                if (currentSessionId !== null) {
+                    // ★上書き保存フロー：現在開いているセッションがある場合
+                    try {
+                        // 上書き対象のセッション情報を取得して、名前を確認画面に表示
+                        const currentSession = await idbHelper.get(CONSTANTS.DB.STORE_SESSIONS, currentSessionId);
+                        if (!currentSession) {
+                            // もしIDに対応するセッションが消えていたら、新規保存にフォールバック
+                            doSaveAs();
+                            return;
+                        }
+
+                        // 確認モーダルのボタンを設定
+                        confirmModalOkBtn.textContent = '上書き保存';
+                        confirmModalContinueBtn.textContent = '別名で保存';
+                        
+                        showConfirmModal(
+                            `現在の作業を「${currentSession.name}」に上書き保存しますか？`,
+                            // 「上書き保存」が押された時の処理
+                            () => {
+                                saveSession(currentSessionId, currentSession.name);
+                            },
+                            // 「別名で保存」が押された時の処理
+                            () => {
+                                doSaveAs();
+                            },
+                            // ★ここを追加：保存の場面に合わせてボタンの表示を指定します
+                            { okText: '上書き保存', continueText: '別名で保存' }
+                        );
+                    } catch (e) {
+                        console.error("セッション情報の取得に失敗:", e);
+                        showToast("エラーが発生したため、新規保存します。", true);
+                        doSaveAs();
+                    }
+                } else {
+                    // ★新規保存フロー：まだ一度も保存していない場合
+                    doSaveAs();
+                }
+            });
+
+            async function populateLoadSessionModal() {
+                try {
+                    const sessions = await idbHelper.getAll(CONSTANTS.DB.STORE_SESSIONS);
+                    loadSessionList.innerHTML = '';
+                    if (sessions.length === 0) {
+                        loadSessionList.innerHTML = '<p class="text-gray-500 text-center">保存された作業はありません。</p>';
+                        return;
+                    }
+                    
+                    sessions.sort((a,b) => b.savedAt - a.savedAt);
+
+                    sessions.forEach(session => {
+                        const div = document.createElement('div');
+                        div.className = 'session-item flex justify-between items-center p-3 border-b cursor-pointer';
+                        div.dataset.sessionId = session.id;
+
+                        const infoDiv = document.createElement('div');
+                        infoDiv.innerHTML = `
+                            <p class="font-semibold text-gray-800">${session.name}</p>
+                            <p class="text-sm text-gray-500">${session.savedAt.toLocaleString('ja-JP')}</p>
+                            <p class="text-xs text-gray-400 mt-1">動画: ${session.source.name || session.source.id}</p>
+                        `;
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'text-gray-400 hover:text-red-500 p-2';
+                        deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>';
+                      deleteBtn.title = 'このセッションを削除';
+                        deleteBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            // ★この行を追加し、確認画面の前にウィンドウを閉じます
+                            loadSessionModal.classList.add(CONSTANTS.CSS.HIDDEN); 
+                            showConfirmModal(`セッション「${session.name}」を削除しますか？`, async () => {
+                                await idbHelper.delete(CONSTANTS.DB.STORE_SESSIONS, session.id);
+                                showToast('セッションを削除しました。');
+                                await populateLoadSessionModal();
+                            });
+                        };
+
+                        div.appendChild(infoDiv);
+                        div.appendChild(deleteBtn);
+                        loadSessionList.appendChild(div);
+                    });
+                } catch (e) {
+                    console.error("セッションリストの読み込みに失敗しました:", e);
+                    loadSessionList.innerHTML = '<p class="text-red-500 text-center">エラー: 保存された作業を読み込めませんでした。</p>';
+                }
+            }
+
+            loadSessionBtn.addEventListener('click', async () => {
+                await populateLoadSessionModal();
+                loadSessionModal.classList.remove(CONSTANTS.CSS.HIDDEN);
+            });
+            
+            loadSessionModalCloseBtn.addEventListener('click', () => {
+                loadSessionModal.classList.add(CONSTANTS.CSS.HIDDEN);
+            });
+
+            loadSessionList.addEventListener('click', (e) => {
+                const item = e.target.closest('.session-item');
+                if (!item) return;
+                const sessionId = parseInt(item.dataset.sessionId, 10);
+                
+                loadSessionModal.classList.add(CONSTANTS.CSS.HIDDEN);
+                
+                showConfirmModal('現在の作業内容は破棄されます。選択したセッションを読み込みますか？', async () => {
+                    loadingOverlay.classList.remove(CONSTANTS.CSS.HIDDEN);
+                    loadingMessage.textContent = 'セッションを読み込み中...';
+
+                    try {
+                        const session = await idbHelper.get(CONSTANTS.DB.STORE_SESSIONS, sessionId);
+                        if (!session) {
+                            throw new Error('Session not found');
+                        }
+                        
+                        // --- ▼▼▼ここからが修正箇所です▼▼▼ ---
+
+                        // 1. 現在のフィードバックフォームとプレイヤーをリセット
+                        cleanupPreviousSource();
+                        resetFeedbackForm();
+                        urlInput.value = '';
+                        if (ytPlayer) {
+                            ytPlayer.destroy();
+                            ytPlayer = null;
+                        }
+                        genericPlayer.src = '';
+                        genericPlayer.classList.add(CONSTANTS.CSS.HIDDEN);
+                        youtubePlayerDiv.classList.add(CONSTANTS.CSS.HIDDEN);
+                        playerPlaceholder.classList.remove(CONSTANTS.CSS.HIDDEN);
+                        playerPlaceholder.textContent = '動画を読み込んでいます...';
+
+
+                        // 2. 画像データベースをクリアし、セッションの画像データを再登録
+                        await idbHelper.clear(CONSTANTS.DB.STORE_IMAGES);
+                        const newFeedbacks = [];
+                        for (const fb of session.feedbacks) {
+                            const { imageBlob, ...rest } = fb;
+                            if (imageBlob) {
+                                await idbHelper.set(CONSTANTS.DB.STORE_IMAGES, { id: rest.imageId, blob: imageBlob });
+                            }
+                            newFeedbacks.push(rest);
+                        }
+                        
+                        // 3. アプリケーションの状態を読み込んだセッションのデータで更新
+                        feedbacks = newFeedbacks;
+                        markers = session.markers;
+                        currentVideoSource = session.source;
+                        currentSessionId = session.id; // ★ここを追加：読み込んだ作業のIDで"しるし"を付けます
+
+                        // 4. 新しい状態でUIを再描画
+                        await renderFeedbacks();
+                        renderMarkers();
+                        
+                        // 5. 読み込んだ動画ソースに合わせてプレイヤーを再初期化
+                        const source = session.source;
+                        if (source.type === CONSTANTS.SOURCE_TYPE.YOUTUBE) {
+                            urlInput.value = `https://www.youtube.com/watch?v=${source.id}`;
+                            await initializeYoutubePlayer(source.id);
+                        } else if (source.type === CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE) {
+                            urlInput.value = `https://drive.google.com/file/d/${source.id}/view`;
+                            const driveUrl = `https://drive.google.com/uc?export=view&id=${source.id}`;
+                            initializeGenericPlayer(driveUrl, CONSTANTS.SOURCE_TYPE.GOOGLE_DRIVE);
+                        } else if (source.type === CONSTANTS.SOURCE_TYPE.LOCAL) {
+                            // ローカルファイルの場合、再選択を促すメッセージを表示
+                             playerPlaceholder.textContent = `セッションを読み込みました。動画ファイル「${source.name || '不明なファイル'}」を再度ドラッグ＆ドロップしてください。`;
+                             reviewSection.classList.remove(CONSTANTS.CSS.HIDDEN);
+                        }
+
+                        // 6. ページをリロードする代わりに、現在の状態を最終状態として保存
+                        await saveLastState();
+                        showToast(`セッション「${session.name}」を読み込みました。`);
+
+                    } catch (e) {
+                        console.error("セッションの読み込みに失敗しました:", e);
+                        showToast('セッションの読み込みに失敗しました。', true);
+                    } finally {
+                        // 7. 最後にローディング画面を非表示にする
+                        loadingOverlay.classList.add(CONSTANTS.CSS.HIDDEN);
+                    }
+                });
+            });
+
+
+            async function main() {
+                try {
+                    await idbHelper.init();
+                    await loadLastStateAndInitializePlayer();
+                    updateHistoryButtons();
+                    window.addEventListener('resize', setupCanvas);
+                    
+                    setupUrlInputAndTooltips();
+
+                    // ▼▼▼ ここから変更 ▼▼▼
+                    const copyBtn = document.getElementById('copy-for-email-btn');
+                    copyBtn.addEventListener('click', () => {
+                        copyForEmail();
+                    });
+                    // ▲▲▲ ここまで変更 ▲▲▲
+                    
+                    downloadJpegBtn.addEventListener('click', handleImageDownloadClick);
+                    // --- 定型文ボタンのセットアップ ---
+                    const templateTelopBtn = document.getElementById('template-telop-btn');
+                    const templateNaBtn = document.getElementById('template-na-btn');
+                    const templateCheckBtn = document.getElementById('template-check-btn'); // ★「確認事項」ボタンを追加
+                    const feedbackText = document.getElementById('feedback-text'); // ★安全のため再取得
+
+                    const insertTemplate = (text) => {
+                        const start = feedbackText.selectionStart;
+                        const end = feedbackText.selectionEnd;
+                        const currentText = feedbackText.value;
+                        
+                        // カーソル位置にテキストを挿入
+                        feedbackText.value = currentText.substring(0, start) + text + currentText.substring(end);
+                        
+                        // カーソルを挿入したテキストの直後に移動
+                        const newCursorPos = start + text.length;
+                        feedbackText.selectionStart = newCursorPos;
+                        feedbackText.selectionEnd = newCursorPos;
+
+                        // テキストエリアにフォーカスを当てて、すぐ入力できるようにする
+                        feedbackText.focus();
+                        
+                        // タイムコード取得や保存ボタン有効化のために、
+                        // 手動で「inputイベント」を発生させる
+                        feedbackText.dispatchEvent(new Event('input', { bubbles: true }));
+                    };
+
+                    templateTelopBtn.addEventListener('click', () => insertTemplate('テロップ：')); // ★テキストを修正
+                    templateNaBtn.addEventListener('click', () => insertTemplate('NA：'));
+                    templateCheckBtn.addEventListener('click', () => insertTemplate('確認事項：')); // ★動作を追加
+                    
+                } catch (e) {
+                    console.error("Application initialization failed:", e);
+                    showToast("アプリケーションの初期化に失敗しました。", true);
+                }
+            }
+
+window.addEventListener('beforeunload', () => {
+                // ローカル動画のURLが残っていれば、タブを閉じる際に解放する
+                if (genericPlayer.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(genericPlayer.src);
+                }
+            });
+            main();
+})();
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    </body>
+</html>
