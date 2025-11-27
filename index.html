@@ -12,7 +12,7 @@
 </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V-checker v163</title>
+    <title>V-checker v164</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -232,7 +232,7 @@
             </div>
 
             <p class="text-xs text-gray-500 mt-2">
-                最終更新日: 2025/11/19 (v163) 
+                最終更新日: 2025/11/27 (v164) 
             </p>
         </header>
 
@@ -614,10 +614,19 @@
 
     <footer class="text-center p-4 text-sm text-gray-500">
         <div class="mb-4">
-            <a href="https://miruca.co.jp/" target="_blank" rel="noopener noreferrer">
-                <img src="https://miruca.co.jp/_img/ja/cms/580/image/_/?1756951917" alt="Miruca Co., Ltd. Logo" class="mx-auto h-10">
-            </a>
+            <img id="companyLogo" alt="Company Logo" class="mx-auto h-10">
         </div>
+        
+        <script>
+            fetch('logo.txt')
+                .then(response => response.text())
+                .then(data => {
+                    // 読み込んだBase64データを画像のsrcにセット
+                    const img = document.getElementById('companyLogo');
+                    if(img) img.src = data;
+                })
+                .catch(error => console.error('Logo loading failed:', error));
+        </script>
         <p>不具合ございましたら、miruca映像部の上田までご連絡ください。</p>
     </footer>
 
